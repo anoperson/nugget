@@ -278,28 +278,49 @@ def parseLine(line, sdict):
             exit()
                 
     tokenId = int(els[0])
+    sdict['tokenId'] += [tokenId]
     tokenStart = int(els[1])
+    sdict['tokenStart'] += [tokenStart]
     tokenEnd = int(els[2])
+    sdict['tokenEnd'] += [tokenEnd]
                 
     token = els[3]
+    sdict['token'] += [token]
     lemma = els[4]
+    sdict['lemma'] += [lemma]
     pos = els[5]
+    sdict['pos'] += [pos]
     chunk = els[6]
+    sdict['chunk'] += [chunk]
     nomlex = els[7]
+    sdict['nomlex'] += [nomlex]
     clause = els[8]
+    sdict['clause'] += [clause]
     possibleTypes = els[9].split()
+    sdict['possibleTypes'] += [possibleTypes]
     synonyms = els[10].split()
+    sdict['synonyms'] += [synonyms]
     brown = els[11].split()
+    sdict['brown'] += [brown]
     dep = els[12].split()
+    sdict['dep'] += [dep]
     nonref = els[13]
+    sdict['nonref'] += [nonref]
     title = els[14]
+    sdict['title'] += [title]
     eligible = els[15]
+    sdict['eligible'] += [eligible]
     sparseFeatures = els[16].split()
+    sdict['sparseFeatures'] += [sparseFeatures]
     
-    type = els[17]
-    subtype = els[18]
-    realis = els[19]
-    mentId = els[20]
+    etype = els[17]
+    sdict['type'] += [etype]
+    esubtype = els[18]
+    sdict['subtype'] += [esubtype]
+    erealis = els[19]
+    sdict['realis'] += [erealis]
+    eeventId = els[20]
+    sdict['eventId'] += [eeventId]
 
 def lookup(mess, key, gdict, addOne):
     if key not in gdict:
