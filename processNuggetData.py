@@ -47,6 +47,7 @@ def build_data(srcDir, dataCorpus):
     
     currentDoc = ''
     sdict = defaultdict(list)
+    mpdict = defaultdict(dict)
     for _dat in dataCorpus:
         revs[_data] = {}
         with open(srcDir + '/' + _dat + '.txt', 'r') as f:
@@ -72,7 +73,7 @@ def build_data(srcDir, dataCorpus):
                 if line.startswith('@Coreference'):
                     #adding coreference chain here
                 
-                
+                parseLine(line, sdict)
                 
                 
     
@@ -270,7 +271,7 @@ def build_data(srcDir, dataCorpus):
     return idMap, maxLength, revs, vocab, nodeDict, edgeDict, etypeDict, esubtypeDict, depRelDict, typeDict, typeOneDict, posDict, chunkDict, clauseDict, referDict, titleModifierDict, possibleNodeDict, nodeFetDict, edgeFetDict
 
 
-def parseLine(line, sdict):
+def parseLine(line, sdict, mpdict, vocab):
     els = line.split('\t')
                 
     if len(els) != 21:
@@ -286,39 +287,58 @@ def parseLine(line, sdict):
                 
     token = els[3]
     sdict['token'] += [token]
+    vocab[token] += 1
+    
     lemma = els[4]
-    sdict['lemma'] += [lemma]
+    #sdict['lemma'] += [lemma]
+    
     pos = els[5]
-    sdict['pos'] += [pos]
+    lookup('POS', pos, mpdict['pos'], True)
+    sdict['pos'] += [mpdict['pos'][pos]]
+    
     chunk = els[6]
-    sdict['chunk'] += [chunk]
+    lookup('CHUNK', chunk, mpdict['chunk'], True)
+    sdict['chunk'] += [mpdict['chunk'][chunk]]
+    
     nomlex = els[7]
     sdict['nomlex'] += [nomlex]
+    
     clause = els[8]
     sdict['clause'] += [clause]
+    
     possibleTypes = els[9].split()
     sdict['possibleTypes'] += [possibleTypes]
+    
     synonyms = els[10].split()
     sdict['synonyms'] += [synonyms]
-    brown = els[11].split()
-    sdict['brown'] += [brown]
+    
+    browns = els[11].split()
+    sdict['browns'] += [browns]
+    
     dep = els[12].split()
     sdict['dep'] += [dep]
+    
     nonref = els[13]
     sdict['nonref'] += [nonref]
+    
     title = els[14]
     sdict['title'] += [title]
+    
     eligible = els[15]
     sdict['eligible'] += [eligible]
+    
     sparseFeatures = els[16].split()
     sdict['sparseFeatures'] += [sparseFeatures]
     
     etype = els[17]
     sdict['type'] += [etype]
+    
     esubtype = els[18]
     sdict['subtype'] += [esubtype]
+    
     erealis = els[19]
     sdict['realis'] += [erealis]
+    
     eeventId = els[20]
     sdict['eventId'] += [eeventId]
 
