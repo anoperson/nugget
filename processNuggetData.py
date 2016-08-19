@@ -10,35 +10,29 @@ extra = 5
 maximumLen = 70
 fetCutoff = 2
 
-def build_data(data_file, data_list):
+    typeDict = {'NONE':1}
+    typeOneDict = {'NONE':1}
+    
+def build_data(srcDir, dataCorpus):
     """
     Loads data.
     """
     nodeDict = {'NONE':0}
-    edgeDict = {'NONE':0}
-    
-    etypeDict = {'NONE':0}
-    esubtypeDict = {'NONE':0}
     
     vocab = defaultdict(float)
     
-    depRelDict = {'NONE':1}
-    typeDict = {'NONE':1}
-    typeOneDict = {'NONE':1}
     posDict = {}
     chunkDict = {'O':1}
     clauseDict = {}
+    possibleNodeDict = {'NONE':1}
+    depRelDict = {'NONE':1}
     referDict = {'false':1}
     titleModifierDict = {'false':1}
-    possibleNodeDict = {'NONE':1}
     
     nodeFetDict = {'':0}
-    edgeFetDict = {'':0}
-    
     nodeFetCounter = defaultdict(int)
-    edgeFetCounter = defaultdict(int)
     
-    revs = []
+    revs = {}
     
     corpusCountIns = defaultdict(int)
     maxLength = -1
@@ -46,12 +40,41 @@ def build_data(data_file, data_list):
     tooLong = 0
     idMap = {}
     
-    corpusMap = loadCorpusMap(data_list)
-    
     inst = []
     entId, edgeId, annId = -1, -1, -1
     
     idid = -1
+    
+    currentDoc = ''
+    sdict = defaultdict(list)
+    for _dat in dataCorpus:
+        revs[_data] = {}
+        with open(srcDir + '/' + _dat + '.txt', 'r') as f:
+            for line in f:
+                line = line.strip()
+                
+                if line.startswith('#BeginOfDocument'):
+                    currentDoc = line[(line.find(' ')+1):]
+                    revs[_data][currentDoc] = {}
+                    continue
+                
+                if line == '#EndOfDocument':
+                    currentDoc = ''
+                    continue
+                
+                if not line and not currentDoc:
+                    continue
+                
+                if not line:
+                    #adding things into dataset here
+                    sdict = defaultdict(list)
+                
+                if line.startswith('@Coreference'):
+                    #adding coreference chain here
+                
+                
+                
+                
     
     with open(data_file, 'r') as f:
         for line in f:
@@ -246,24 +269,44 @@ def build_data(data_file, data_list):
     
     return idMap, maxLength, revs, vocab, nodeDict, edgeDict, etypeDict, esubtypeDict, depRelDict, typeDict, typeOneDict, posDict, chunkDict, clauseDict, referDict, titleModifierDict, possibleNodeDict, nodeFetDict, edgeFetDict
 
+
+def parseLine(line, sdict):
+    els = line.split('\t')
+                
+    if len(els) != 21:
+        print 'incorrect line format: ', line
+            exit()
+                
+    tokenId = int(els[0])
+    tokenStart = int(els[1])
+    tokenEnd = int(els[2])
+                
+    token = els[3]
+    lemma = els[4]
+    pos = els[5]
+    chunk = els[6]
+    nomlex = els[7]
+    clause = els[8]
+    possibleTypes = els[9].split()
+    synonyms = els[10].split()
+    brown = els[11].split()
+    dep = els[12].split()
+    nonref = els[13]
+    title = els[14]
+    eligible = els[15]
+    sparseFeatures = els[16].split()
+    
+    type = els[17]
+    subtype = els[18]
+    realis = els[19]
+    mentId = els[20]
+
 def lookup(mess, key, gdict, addOne):
     if key not in gdict:
         nk = len(gdict)
         if addOne: nk += 1
         gdict[key] = nk
         if mess: print mess, ': ', key, ' --> id = ', gdict[key]
-
-def loadCorpusMap(data_list):
-    print 'loading corpusMap ...'
-    res = {}
-    for dl in data_list:
-        with open(data_list[dl], 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line: continue
-                res[line] = dl
-    print 'loaded: ', len(res), ' files'
-    return res
 
 def parseInst(inst, entId, edgeId, annId):
     
@@ -430,16 +473,12 @@ if __name__=="__main__":
     random.seed(8989)
     embType = sys.argv[1]
     w2v_file = sys.argv[2]
-    data_file = sys.argv[3]
-    srcDir = sys.argv[4]
-    eventEntityTypeFile = sys.argv[5]
+    srcDir = sys.argv[3]
     
     dataCorpus = ["train", "valid", "test"]
-    data_list = {}
-    for d in dataCorpus: data_list[d] = srcDir + "/" + d + ".txt"
     
     print "loading data...\n"
-    idMap, maxLength, revs, vocab, nodeDict, edgeDict, etypeDict, esubtypeDict, depRelDict, typeDict, typeOneDict, posDict, chunkDict, clauseDict, referDict, titleModifierDict, possibleNodeDict, nodeFetDict, edgeFetDict = build_data(data_file, data_list)
+     = build_data(srcDir, dataCorpus)
     
     eventEntityType = loadEventEntityType(eventEntityTypeFile, nodeDict)
     
