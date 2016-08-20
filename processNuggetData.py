@@ -17,20 +17,6 @@ def build_data(srcDir, dataCorpus):
     """
     Loads data.
     """
-    nodeDict = {'NONE':0}
-    
-    vocab = defaultdict(float)
-    
-    posDict = {}
-    chunkDict = {'O':1}
-    clauseDict = {}
-    possibleNodeDict = {'NONE':1}
-    depRelDict = {'NONE':1}
-    referDict = {'false':1}
-    titleModifierDict = {'false':1}
-    
-    nodeFetDict = {'':0}
-    nodeFetCounter = defaultdict(int)
     
     revs = {}
     
@@ -38,16 +24,24 @@ def build_data(srcDir, dataCorpus):
     maxLength = -1
     lengthCounter = defaultdict(int)
     tooLong = 0
-    idMap = {}
-    
-    inst = []
-    entId, edgeId, annId = -1, -1, -1
-    
-    idid = -1
     
     currentDoc = ''
     sdict = defaultdict(list)
+    
     mpdict = defaultdict(dict)
+    mpdict['chunk']['O'] = 1
+    mpdict['possibleTypes']['NONE'] = 1
+    mpdict['dep']['NONE'] = 1
+    mpdict['nonref']['false'] = 1
+    mpdict['title']['false'] = 1
+    mpdict['eligible']['0'] = 1
+    mpdict['type']['NONE'] = 0
+    mpdict['subtype']['NONE'] = 0
+    mpdict['realis']['NONE'] = 0
+    
+    vocab = defaultdict(int)
+    nodeFetDict = {'':0}
+    nodeFetCounter = defaultdict(int)
     for _dat in dataCorpus:
         revs[_data] = {}
         with open(srcDir + '/' + _dat + '.txt', 'r') as f:
@@ -73,7 +67,7 @@ def build_data(srcDir, dataCorpus):
                 if line.startswith('@Coreference'):
                     #adding coreference chain here
                 
-                parseLine(line, sdict)
+                parseLine(line, sdict, mpdict, vocab, nodeFetCounter)
                 
                 
     
@@ -271,7 +265,7 @@ def build_data(srcDir, dataCorpus):
     return idMap, maxLength, revs, vocab, nodeDict, edgeDict, etypeDict, esubtypeDict, depRelDict, typeDict, typeOneDict, posDict, chunkDict, clauseDict, referDict, titleModifierDict, possibleNodeDict, nodeFetDict, edgeFetDict
 
 
-def parseLine(line, sdict, mpdict, vocab):
+def parseLine(line, sdict, mpdict, vocab, nodeFetCounter):
     els = line.split('\t')
                 
     if len(els) != 21:
@@ -301,43 +295,56 @@ def parseLine(line, sdict, mpdict, vocab):
     sdict['chunk'] += [mpdict['chunk'][chunk]]
     
     nomlex = els[7]
-    sdict['nomlex'] += [nomlex]
+    #sdict['nomlex'] += [nomlex]
     
     clause = els[8]
-    sdict['clause'] += [clause]
+    if clause not in mpdict['clause']:
+        mpdict['clause'][clause] = int(clause) + 1
+        print 'CLAUSE: ', clause, ' id --> ', mpdict['clause'][clause]
+    sdict['clause'] += [mpdict['clause'][clause]]
     
     possibleTypes = els[9].split()
-    sdict['possibleTypes'] += [possibleTypes]
+    for piptype in possibleTypes:
+        lookup('POSSIBLE TYPE', piptype, mpdict['possibleTypes'], True)
+    sdict['possibleTypes'] += [ [mpdict['possibleTypes'][piptype] for piptype in possibleTypes] ]
     
     synonyms = els[10].split()
-    sdict['synonyms'] += [synonyms]
+    #sdict['synonyms'] += [synonyms]
     
     browns = els[11].split()
-    sdict['browns'] += [browns]
+    #sdict['browns'] += [browns]
     
     dep = els[12].split()
-    sdict['dep'] += [dep]
+    lookup('DEP', dep, mpdict['dep'], True)
+    sdict['dep'] += [mpdict['dep'][dep]]
     
     nonref = els[13]
-    sdict['nonref'] += [nonref]
+    lookup('NONREF', nonref, mpdict['nonref'], True)
+    sdict['nonref'] += [mpdict['nonref'][nonref]]
     
     title = els[14]
-    sdict['title'] += [title]
+    lookup('TITLE', title, mpdict['title'], True)
+    sdict['title'] += [mpdict['title'][title]]
     
     eligible = els[15]
-    sdict['eligible'] += [eligible]
+    lookup('ELIGIBLE', eligible, mpdict['eligible'], True)
+    sdict['eligible'] += [mpdict['eligible'][eligible]]
     
     sparseFeatures = els[16].split()
     sdict['sparseFeatures'] += [sparseFeatures]
+    for sps in sparseFeatures: nodeFetCounter[sps] += 1
     
     etype = els[17]
-    sdict['type'] += [etype]
+    lookup('EVENT TYPE', etype, mpdict['type'], False)
+    sdict['type'] += [mpdict['type'][etype]]
     
     esubtype = els[18]
-    sdict['subtype'] += [esubtype]
+    lookup('EVENT SUBTYPE', esubtype, mpdict['subtype'], False)
+    sdict['subtype'] += [mpdict['subtype'][esubtype]]
     
     erealis = els[19]
-    sdict['realis'] += [erealis]
+    lookup('EVENT REALIS', erealis, mpdict['realis'], False)
+    sdict['realis'] += [mpdict['realis'][erealis]]
     
     eeventId = els[20]
     sdict['eventId'] += [eeventId]
