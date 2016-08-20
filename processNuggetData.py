@@ -6,13 +6,17 @@ import pandas as pd
 import random
 
 #thien's version
-extra = 5
-maximumLen = 70
 fetCutoff = 2
+window = 31
+useEligible = False
 
-    typeDict = {'NONE':1}
-    typeOneDict = {'NONE':1}
-    
+def lookup(mess, key, gdict, addOne):
+    if key not in gdict:
+        nk = len(gdict)
+        if addOne: nk += 1
+        gdict[key] = nk
+        if mess: print mess, ': ', key, ' --> id = ', gdict[key]
+
 def build_data(srcDir, dataCorpus):
     """
     Loads data.
@@ -21,28 +25,33 @@ def build_data(srcDir, dataCorpus):
     revs = {}
     
     corpusCountIns = defaultdict(int)
+    corpusCountTypes = defaultdict(lambda: defaultdict(int))
+    corpusCountSubTypes = defaultdict(lambda: defaultdict(int))
+    corpusCountRealis = defaultdict(lambda: defaultdict(int))
+    corpusCountCoref = defaultdict(int)
     maxLength = -1
     lengthCounter = defaultdict(int)
-    tooLong = 0
     
     currentDoc = ''
     sdict = defaultdict(list)
+    ddict = {}
     
-    mpdict = defaultdict(dict)
-    mpdict['chunk']['O'] = 1
-    mpdict['possibleTypes']['NONE'] = 1
-    mpdict['dep']['NONE'] = 1
-    mpdict['nonref']['false'] = 1
-    mpdict['title']['false'] = 1
-    mpdict['eligible']['0'] = 1
-    mpdict['type']['NONE'] = 0
-    mpdict['subtype']['NONE'] = 0
-    mpdict['realis']['NONE'] = 0
+    mpdict = {}
+    mpdict['pos'] = {'######':0}
+    mpdict['chunk'] = {'######':0,'O':1}
+    mpdict['clause'] = {'######':0}
+    mpdict['possibleTypes'] = {'NONE':0}
+    mpdict['dep'] = {'NONE':0}
+    mpdict['nonref'] = {'######':0,'false':1}
+    mpdict['title'] = {'######':0,'false':1}
+    mpdict['eligible'] = {'######':0,'0':1}
+    mpdict['type'] = {'NONE':0}
+    mpdict['subtype'] = {'NONE':0}
+    mpdict['realis'] = {'NONE':0}
     
     vocab = defaultdict(int)
-    nodeFetDict = {'':0}
     nodeFetCounter = defaultdict(int)
-    for _dat in dataCorpus:
+    for _data in dataCorpus:
         revs[_data] = {}
         with open(srcDir + '/' + _dat + '.txt', 'r') as f:
             for line in f:
@@ -50,7 +59,7 @@ def build_data(srcDir, dataCorpus):
                 
                 if line.startswith('#BeginOfDocument'):
                     currentDoc = line[(line.find(' ')+1):]
-                    revs[_data][currentDoc] = {}
+                    revs[_data][currentDoc] = {'instances' : [], 'coreference' : []}
                     continue
                 
                 if line == '#EndOfDocument':
@@ -61,192 +70,23 @@ def build_data(srcDir, dataCorpus):
                     continue
                 
                 if not line:
-                    #adding things into dataset here
+                    length = len(sdict['token'])
+                    lengthCounter[length] += 1
+                    if length > maxLength: maxLength = length
+                    for anchorIndex in range(length):
+                        inst = parseInst(sdict, ddict, anchorIndex, window, useEligible)
+                        revs[_data][currentDoc]['instances'] += [inst]
+                        updateCounters(_data, inst, corpusCountIns, corpusCountTypes, corpusCountSubTypes, corpusCountRealis)
                     sdict = defaultdict(list)
+                    continue
                 
                 if line.startswith('@Coreference'):
-                    #adding coreference chain here
+                    revs[_data][currentDoc]['coreference'] += [parseCoreferenceLine(line)]
+                    corpusCountCoref[_data] += len(revs[_data][currentDoc]['coreference'])
+                    continue
                 
-                parseLine(line, sdict, mpdict, vocab, nodeFetCounter)
+                parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter if 'train' in _data else None)
                 
-                
-    
-    with open(data_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            
-            if line:
-                inst += [line]
-                
-                if line == '--------Entity_Mention--------': entId = len(inst)
-                if line == '--------Edge_Features--------': edgeId = len(inst)
-                if line == '--------Annotation--------': annId = len(inst)
-                
-                continue
-            
-            id = inst[0]
-            docId = id[(id.find('=')+1):]
-            docId = docId[0:docId.rfind('#')]
-            if docId not in corpusMap:
-                print 'cannot find ', docId, ' in corpusMap'
-                exit()
-            corpus = corpusMap[docId]
-            
-            sentence, pos, chunk, clause, posType, grs, ets, ref, title, eligible, nodeFets, entities, edgeFets, eventPos, eventTrigger, eventArgs = parseInst(inst, entId, edgeId, annId)
-            
-            inst = []
-            
-            if len(sentence) > maximumLen:
-                tooLong += 1
-                continue
-            if not eventPos and corpus == 'train': continue
-            
-            entId, annId = -1, -1
-            
-            for i, trigger in enumerate(eventTrigger):
-                lookup('trigger', trigger, nodeDict, False)
-                eventTrigger[i] = nodeDict[trigger]
-                
-                for arg_pos in eventArgs[i]:
-                    arg_label = eventArgs[i][arg_pos]
-                    lookup('argument', arg_label, edgeDict, False)
-                    eventArgs[i][arg_pos] = edgeDict[arg_label]
-            
-            for i, entity in enumerate(entities):
-                etype = entity[4]
-                lookup('entityType', etype, etypeDict, False)
-                entities[i][4] = etypeDict[etype]
-                
-                esubtype = entity[5]
-                lookup('entitySubType', esubtype, esubtypeDict, False)
-                entities[i][5] = esubtypeDict[esubtype]
-                
-            words = set(sentence)
-            for word in words:
-                #word = ' '.join(word.split('_'))
-                vocab[word] += 1
-            
-            for i, pos_i in enumerate(pos):
-                lookup('POS', pos_i, posDict, True)
-                pos[i] = posDict[pos_i]
-            
-            for i, chunk_i in enumerate(chunk):
-                lookup('CHUNK', chunk_i, chunkDict, True)
-                chunk[i] = chunkDict[chunk_i]
-            
-            for i, clause_i in enumerate(clause):
-                clauseDict[clause_i] = int(clause_i)
-                clause[i] = int(clause_i)
-            
-            for pts in posType:
-                for pt in pts:
-                    lookup('possibleTriggerType', pt, possibleNodeDict, True)
-            nposType = []
-            for pts in posType:
-                npt = [ possibleNodeDict[pt] for pt in pts ]
-                nposType += [npt]
-            posType = nposType
-            
-            for gs in grs:
-                for g in gs:
-                    lookup('depRelType', g, depRelDict, True)
-            nngs = []
-            for gs in grs:
-                nng = [ depRelDict[g] for g in gs ]
-                nngs += [nng]
-            grs = nngs
-            
-            oneEts = []
-            for et in ets: oneEts += [et[0]]
-            for i, oneEts_i in enumerate(oneEts):
-                lookup('entityOneTypeSequence', oneEts_i, typeOneDict, True)
-                oneEts[i] = typeOneDict[oneEts_i]
-            
-            for et in ets:
-                for e in et:
-                    lookup('entityTypeSequence', e, typeDict, True)
-            nets = []
-            for et in ets:
-                net = [ typeDict[e] for e in et ]
-                nets += [net]
-            ets = nets
-            
-            for i, ref_i in enumerate(ref):
-                lookup('REFERENCE', ref_i, referDict, True)
-                ref[i] = referDict[ref_i]
-            
-            for i, title_i in enumerate(title):
-                lookup('TITLE', title_i, titleModifierDict, True)
-                title[i] = titleModifierDict[title_i]
-            
-            for nfs in nodeFets:
-                for nf in nfs:
-                    if not nf: continue
-                    nodeFetCounter[nf] += 1
-            
-            for eefs in edgeFets:
-                for wefs in eefs:
-                    for ef in wefs:
-                        if not ef: continue
-                        edgeFetCounter[ef] += 1
-                
-            if len(sentence) > maxLength:
-                maxLength = len(sentence)
-                    
-            lengthCounter[len(sentence)] += 1
-            
-            corpusCountIns[corpus] += 1
-            
-            idid += 1
-            idMap[idid] = id
-            
-            datum = {"id": idid,
-                         
-                     "text": sentence,
-                     "pos": pos,
-                     "chunk": chunk,
-                     "clause": clause,
-                     "posType": posType,
-                     "dep": grs,
-                     "typeEntity": ets,
-                     "typeOneEntity": oneEts,
-                     "refer": ref,
-                     "title": title,
-                     "eligible": eligible,
-                     "nodeFets": nodeFets,
-                     
-                     "entities": entities,
-                     "edgeFets": edgeFets,
-                     
-                     "eventPos": eventPos,
-                     "eventTrigger": eventTrigger,
-                     "eventArgs": eventArgs,
-                     
-                     "corpus": corpus}
-            revs.append(datum)
-    
-    for mf in nodeFetCounter:
-        if nodeFetCounter[mf] >= fetCutoff:
-            nodeFetDict[mf] = len(nodeFetDict)
-    for mf in edgeFetCounter:
-        if edgeFetCounter[mf] >= fetCutoff:
-            edgeFetDict[mf] = len(edgeFetDict)
-    
-    for rev in revs:
-        nnodeFets = []
-        for nfs in rev["nodeFets"]:
-            nnfs = [ nodeFetDict[nf] for nf in nfs if nf in nodeFetDict ]
-            nnodeFets += [nnfs]
-        rev["nodeFets"] = nnodeFets
-        
-        nedgeFets = []
-        for eefs in rev["edgeFets"]:
-            neefs = []
-            for wefs in eefs:
-                nwefs = [ edgeFetDict[ef] for ef in wefs if ef in edgeFetDict ]
-                neefs += [nwefs]
-            nedgeFets += [neefs]
-        rev["edgeFets"] = nedgeFets
     
     print 'instances in corpus'
     for corpus in corpusCountIns:
@@ -257,15 +97,50 @@ def build_data(srcDir, dataCorpus):
     	print le, ' : ', lengthCounter[le]
     print '---------------'
     print "maximum length of sentences: ", maxLength
-    print "number of too long: ", tooLong
-    print '----------------'
-    print 'total node features: ', len(nodeFetDict)
-    print 'total edge features: ', len(edgeFetDict)
     
-    return idMap, maxLength, revs, vocab, nodeDict, edgeDict, etypeDict, esubtypeDict, depRelDict, typeDict, typeOneDict, posDict, chunkDict, clauseDict, referDict, titleModifierDict, possibleNodeDict, nodeFetDict, edgeFetDict
+    itypeDict = {}
+    for et in mpdict['type']: itypeDict[mpdict['type'][et]] = et
+    isubtypeDict = {}
+    for est in mpdict['subtype']: isubtypeDict[mpdict['subtype'][est]] = est
+    irealisDict = {}
+    for ere in mpdict['realis']: irealisDict[mpdict['realis'][ere]] = ere
+    
+    for cop in corpusCountIns:
+        print '----------------%s--------------', cop
+        print '#instances: ', corpusCountIns[cop]
+        print '#coreference: ', corpusCountCoref[cop]
+        displayStats('type', corpusCountTypes[cop], itypeDict)
+        displayStats('subtype', corpusCountSubTypes[cop], isubtypeDict)
+        displayStats('realis', corpusCountRealis[cop], irealisDict)
+        
+    return revs, mpdict, vocab, nodeFetCounter
+    
+def displayStats(mess, stats, idict):
+    print '>>>>%s<<<<', mess
+    for v in stats:
+        print '#' + idict[v], ' : ', stats[v]
 
+def updateCounters(_data, inst, corpusCountIns, corpusCountTypes, corpusCountSubTypes, corpusCountRealis):
+    etype = inst['type']
+    esubtype = inst['subtype']
+    erealis = inst['realis']
+    
+    corpusCountIns[_data] += 1
+    corpusCountTypes[_data][etype] += 1
+    corpusCountSubTypes[_data][esubtype] += 1
+    corpusCountRealis[_data][erealis] += 1
 
-def parseLine(line, sdict, mpdict, vocab, nodeFetCounter):
+def parseCoreferenceLine(line):
+    els = line.split('\t')
+    
+    if len(els) != 3:
+        print 'coreference chain does not have length 3: ', line
+        exit()
+        
+    chain = els[2].split(',')
+    return chain
+
+def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
     els = line.split('\t')
                 
     if len(els) != 21:
@@ -273,7 +148,7 @@ def parseLine(line, sdict, mpdict, vocab, nodeFetCounter):
             exit()
                 
     tokenId = int(els[0])
-    sdict['tokenId'] += [tokenId]
+    #sdict['tokenId'] += [tokenId]
     tokenStart = int(els[1])
     sdict['tokenStart'] += [tokenStart]
     tokenEnd = int(els[2])
@@ -282,17 +157,20 @@ def parseLine(line, sdict, mpdict, vocab, nodeFetCounter):
     token = els[3]
     sdict['token'] += [token]
     vocab[token] += 1
+    if 'token' not in ddict: ddict['token'] = '######'
     
     lemma = els[4]
     #sdict['lemma'] += [lemma]
     
     pos = els[5]
-    lookup('POS', pos, mpdict['pos'], True)
+    lookup('POS', pos, mpdict['pos'], False)
     sdict['pos'] += [mpdict['pos'][pos]]
+    if 'pos' not in ddict: ddict['pos'] = 0
     
     chunk = els[6]
-    lookup('CHUNK', chunk, mpdict['chunk'], True)
+    lookup('CHUNK', chunk, mpdict['chunk'], False)
     sdict['chunk'] += [mpdict['chunk'][chunk]]
+    if 'chunk' not in ddict: ddict['chunk'] = 0
     
     nomlex = els[7]
     #sdict['nomlex'] += [nomlex]
@@ -302,11 +180,13 @@ def parseLine(line, sdict, mpdict, vocab, nodeFetCounter):
         mpdict['clause'][clause] = int(clause) + 1
         print 'CLAUSE: ', clause, ' id --> ', mpdict['clause'][clause]
     sdict['clause'] += [mpdict['clause'][clause]]
+    if 'clause' not in ddict: ddict['clause'] = 0
     
     possibleTypes = els[9].split()
     for piptype in possibleTypes:
-        lookup('POSSIBLE TYPE', piptype, mpdict['possibleTypes'], True)
+        lookup('POSSIBLE TYPE', piptype, mpdict['possibleTypes'], False)
     sdict['possibleTypes'] += [ [mpdict['possibleTypes'][piptype] for piptype in possibleTypes] ]
+    if 'possibleTypes' not in ddict: ddict['possibleTypes'] = []
     
     synonyms = els[10].split()
     #sdict['synonyms'] += [synonyms]
@@ -315,24 +195,29 @@ def parseLine(line, sdict, mpdict, vocab, nodeFetCounter):
     #sdict['browns'] += [browns]
     
     dep = els[12].split()
-    lookup('DEP', dep, mpdict['dep'], True)
+    lookup('DEP', dep, mpdict['dep'], False)
     sdict['dep'] += [mpdict['dep'][dep]]
+    if 'dep' not in ddict: ddict['dep'] = []
     
     nonref = els[13]
-    lookup('NONREF', nonref, mpdict['nonref'], True)
+    lookup('NONREF', nonref, mpdict['nonref'], False)
     sdict['nonref'] += [mpdict['nonref'][nonref]]
+    if 'nonref' not in ddict: ddict['nonref'] = 0
     
     title = els[14]
-    lookup('TITLE', title, mpdict['title'], True)
+    lookup('TITLE', title, mpdict['title'], False)
     sdict['title'] += [mpdict['title'][title]]
+    if 'title' not in ddict: ddict['title'] = 0
     
     eligible = els[15]
-    lookup('ELIGIBLE', eligible, mpdict['eligible'], True)
+    lookup('ELIGIBLE', eligible, mpdict['eligible'], False)
     sdict['eligible'] += [mpdict['eligible'][eligible]]
+    if 'eligible' not in ddict: ddict['eligible'] = 0
     
     sparseFeatures = els[16].split()
     sdict['sparseFeatures'] += [sparseFeatures]
-    for sps in sparseFeatures: nodeFetCounter[sps] += 1
+    if nodeFetCounter:
+        for sps in sparseFeatures: nodeFetCounter[sps] += 1
     
     etype = els[17]
     lookup('EVENT TYPE', etype, mpdict['type'], False)
@@ -349,82 +234,35 @@ def parseLine(line, sdict, mpdict, vocab, nodeFetCounter):
     eeventId = els[20]
     sdict['eventId'] += [eeventId]
 
-def lookup(mess, key, gdict, addOne):
-    if key not in gdict:
-        nk = len(gdict)
-        if addOne: nk += 1
-        gdict[key] = nk
-        if mess: print mess, ': ', key, ' --> id = ', gdict[key]
+def parseInst(sdict, ddict, anchorIndex, window, useEligible=False):
 
-def parseInst(inst, entId, edgeId, annId):
+    length = len(sdict['token'])
+    if anchorIndex < 0 or anchorIndex >= length: return None
     
-    sentence, pos, chunk, clause, posType, grs, ets, ref, title, eligible, nodeFets = [], [], [], [], [], [], [], [], [], [], []
+    if sdict['eligible'][anchorIndex] == 1 and useEligible: return None
     
-    for line in inst[1:entId-1]:
-        tokens = line.split('\t')
-        if len(tokens) != 16:
-            print 'not have 16 elements: ', line
-            exit()
-        
-        sentence += [tokens[1]]
-        pos += [tokens[3]]
-        chunk += [tokens[4]]
-        clause += [tokens[6]]
-        posType += [tokens[7].split()]
-        grs += [tokens[10].split()]
-        #ets += [tokens[11].split()]
-        ets += [[tokens[11].split()[0]]]
-        ref += [tokens[12]]
-        title += [tokens[13]]
-        eligible += [int(tokens[14])]
-        nodeFets += [tokens[15].split()]
-    psentLen = len(sentence)
+    inst = {}
     
-    entities = []
-    for line in inst[entId:edgeId-1]:
-        mentions = line.split('\t')
-        if len(mentions) != 7 and len(mentions) != 8:
-            print 'not 7 or 8 elements'
-            exit()        
-        entities += [[int(mentions[1]), int(mentions[2]), int(mentions[3]), int(mentions[4]), mentions[5], mentions[6]]]
-    pnumEntities = len(entities)
-        
-    edgeFets = []
-    for lid in range(pnumEntities):
-        leid = edgeId + lid*(1+psentLen)
-        if int(inst[leid]) != lid:
-            print 'wrong entity id: ', leid, inst[leid]
-            exit()
-        oneWordEdgeFets = []
-        for sid in range(1, 1+psentLen):
-            lsid = leid + sid
-            edgeEls = inst[lsid].split('\t')
-            if len(edgeEls) != 2 or int(edgeEls[0]) != (sid-1):
-                print 'wrong token id: ', lsid, inst[lsid]
-                exit()
-            oneWordEdgeFets += [edgeEls[1].split()]
-        edgeFets += [oneWordEdgeFets]
+    lower = anchorIndex - window / 2
+    upper = lower + window - 1
     
-    if (edgeId + pnumEntities*(1+psentLen)) != (annId-1):
-        print 'wrong positions for annotation and edge features: ', edgeId + pnumEntities*(1+psentLen), annId-1
-        exit()
-        
-    eventPos, eventTrigger, eventArgs = [], [], []
-    for line in inst[annId:]:
-        event = line.split('\t')
-        eventPos += [int(event[0])]
-        eventTrigger += [event[1]]
-        
-        argm = {}
-        for i in range(1,(len(event)/2)):
-            argm[int(event[2*i])] = event[2*i+1]
-        argm_sorted = sorted(argm)
-        ars = OrderedDict()
-        for eid in argm_sorted:
-            ars[eid] = argm[eid]
-        eventArgs += [ars]
+    newAnchorIndex = anchorIndex - lower
     
-    return sentence, pos, chunk, clause, posType, grs, ets, ref, title, eligible, nodeFets, entities, edgeFets, eventPos, eventTrigger, eventArgs
+    for i in range(window):
+        id = i + lower
+        for key in ddict:
+            addent = ddict[key]
+            if id >= 0 and id < length: addent = sdict[key][id]
+            if key not in inst: inst[key] = []
+            inst[key] += [addent]
+    
+    for key in sdict:
+        if key not in ddict:
+            inst[key] = sdict[key][anchorIndex]
+    
+    inst['anchor'] = newAnchorIndex
+    
+    return inst
 
 def get_W(word_vecs, k=300):
     """
@@ -434,6 +272,7 @@ def get_W(word_vecs, k=300):
     word_idx_map = dict()
     W = np.zeros(shape=(vocab_size+1, k))
     W[0] = np.zeros(k)
+    word_idx_map['######'] = 0
     i = 1
     for word in word_vecs:
         W[i] = word_vecs[word]
@@ -491,7 +330,7 @@ def load_text_vec(fname, vocab):
                 if word_vecs[word].shape[0] != dim:
                     print 'mismatch dimensions: ', dim, word_vecs[word].shape[0]
                     exit()
-    print 'loaded ', len(word_vecs), ' words in word embeddings'
+    print 'dim: ', dim
     return dim, word_vecs
 
 def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
@@ -503,19 +342,6 @@ def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
         if word not in word_vecs and vocab[word] >= min_df:
             word_vecs[word] = np.random.uniform(-0.25,0.25,k)
 
-def loadEventEntityType(file, nodeDict):
-    res = {}
-    with open(file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            els = line.split('\t')
-            ev = els[0]
-            if ev not in nodeDict:
-                print 'cannot find event type: ', ev, ' in nodeDict'
-                exit()
-            res[nodeDict[ev]] = els[1:]
-    return res
-
 if __name__=="__main__":
     np.random.seed(8989)
     random.seed(8989)
@@ -526,11 +352,8 @@ if __name__=="__main__":
     dataCorpus = ["train", "valid", "test"]
     
     print "loading data...\n"
-     = build_data(srcDir, dataCorpus)
+    revs, mpdict, vocab, nodeFetCounter = build_data(srcDir, dataCorpus)
     
-    eventEntityType = loadEventEntityType(eventEntityTypeFile, nodeDict)
-    
-    #print "max distance between entities: " + str(maxDist)
     print "data loaded!"
     print "vocab size: " + str(len(vocab))
     print "loading word embeddings...",
@@ -547,84 +370,50 @@ if __name__=="__main__":
     add_unknown_words(rand_vecs, vocab, 1, dimEmb)
     W2, _ = get_W(rand_vecs, dimEmb)
     
-    dictionaries = {}
-    dictionaries['word'] = word_idx_map
-    dictionaries['nodeLabel'] = nodeDict
-    dictionaries['edgeLabel'] = edgeDict
-    dictionaries['etype'] = etypeDict
-    dictionaries['esubtype'] = esubtypeDict
-    dictionaries['dep'] = depRelDict
-    dictionaries['typeEntity'] = typeDict
-    dictionaries['typeOneEntity'] = typeOneDict
-    dictionaries['pos'] = posDict
-    dictionaries['chunk'] = chunkDict
-    dictionaries['clause'] = clauseDict
-    dictionaries['refer'] = referDict
-    dictionaries['title'] = titleModifierDict
-    dictionaries['possibleNode'] = possibleNodeDict
-    dictionaries['nodeFetDict'] = nodeFetDict
-    dictionaries['edgeFetDict'] = edgeFetDict
-    
-    embeddings = {}
-    
+    maxLength = window
     dist_size = 2*maxLength - 1
     dist_dim = 50
-    D1 = np.random.uniform(-0.25,0.25,(dist_size+1,dist_dim))
-    D2 = np.random.uniform(-0.25,0.25,(dist_size+1,dist_dim))
-    D3 = np.random.uniform(-0.25,0.25,(dist_size+1,dist_dim))
-    D1[0] = np.zeros(dist_dim)
-    D2[0] = np.zeros(dist_dim)
-    D3[0] = np.zeros(dist_dim)
-    
-    type_dim = 50
-    TYPE = np.random.uniform(-0.25,0.25,(len(typeOneDict)+1,type_dim))
-    TYPE[0] = np.zeros(type_dim)
+    D = np.random.uniform(-0.25,0.25,(dist_size+1,dist_dim))
+    D[0] = np.zeros(dist_dim)
     
     pos_dim = 50
-    POS = np.random.uniform(-0.25,0.25,(len(posDict)+1,pos_dim))
+    POS = np.random.uniform(-0.25,0.25,(len(mpdict['pos']),pos_dim))
     POS[0] = np.zeros(pos_dim)
     
     chunk_dim = 50
-    CHUNK = np.random.uniform(-0.25,0.25,(len(chunkDict)+1,chunk_dim))
+    CHUNK = np.random.uniform(-0.25,0.25,(len(mpdict['chunk']),chunk_dim))
     CHUNK[0] = np.zeros(chunk_dim)
     
     clause_dim = 50
-    CLAUSE = np.random.uniform(-0.25,0.25,(len(clauseDict)+1,clause_dim))
+    CLAUSE = np.random.uniform(-0.25,0.25,(len(mpdict['clause']),clause_dim))
     CLAUSE[0] = np.zeros(clause_dim)
     
-    refer_dim = 50
-    REFER = np.random.uniform(-0.25,0.25,(2+1,refer_dim))
-    REFER[0] = np.zeros(refer_dim)
+    nonref_dim = 50
+    NONREF = np.random.uniform(-0.25,0.25,(len(mpdict['nonref']),nonref_dim))
+    NONREF[0] = np.zeros(nonref_dim)
     
     title_dim = 50
-    TITLE = np.random.uniform(-0.25,0.25,(2+1,title_dim))
+    TITLE = np.random.uniform(-0.25,0.25,(len(mpdict['title']),title_dim))
     TITLE[0] = np.zeros(title_dim)
     
-    trigger_dim = 50
-    TRIGGER = np.random.uniform(-0.25,0.25,(len(nodeDict)+1,trigger_dim))
-    TRIGGER[0] = np.zeros(trigger_dim)
+    eligible_dim = 50
+    ELIGIBLE = np.random.uniform(-0.25,0.25,(len(mpdict['eligible']),eligible_dim))
+    ELIGIBLE[0] = np.zeros(eligible_dim)
     
-    arg_dim = 50
-    ARG = np.random.uniform(-0.25,0.25,(len(edgeDict)+1,arg_dim))
-    ARG[0] = np.zeros(arg_dim)
-    
+    embeddings = {}
     embeddings['word'] = W1
     embeddings['randomWord'] = W2
-    embeddings['dist1'] = D1
-    embeddings['dist2'] = D2
-    embeddings['dist3'] = D3
-    embeddings['typeOneEntity'] = TYPE
+    embeddings['anchor'] = D
     embeddings['pos'] = POS
     embeddings['chunk'] = CHUNK
     embeddings['clause'] = CLAUSE
-    embeddings['refer'] = REFER
+    embeddings['nonref'] = NONREF
     embeddings['title'] = TITLE
-    embeddings['trigger'] = TRIGGER
-    embeddings['arg'] = ARG
+    embeddings['eligible'] = ELIGIBLE
     
-    for di in dictionaries:
-        print 'size of ', di, ': ', len(dictionaries[di])
+    for di in mpdict:
+        print 'size of ', di, ': ', len(mpdict[di])
     
     print 'dumping ...'
-    cPickle.dump([revs, embeddings, dictionaries, eventEntityType, idMap], open('cut_' + str(fetCutoff) + '.' + embType + "_jointEE.pkl", "wb"))
+    cPickle.dump([revs, embeddings, mpdict], open('win_' + str(window) + '.' + embType + "_nugget.pkl", "wb"))
     print "dataset created!"   
