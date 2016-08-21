@@ -74,7 +74,7 @@ def build_data(srcDir, dataCorpus):
                 
                 if not line:
                     sentId += 1
-                    length = len(sdict['token'])
+                    length = len(sdict['word'])
                     lengthCounter[length] += 1
                     if length > maxLength: maxLength = length
                     for anchorIndex in range(length):
@@ -151,17 +151,17 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
         print 'incorrect line format: ', line
         exit()
                 
-    tokenId = int(els[0])
-    #sdict['tokenId'] += [tokenId]
-    tokenStart = int(els[1])
-    sdict['tokenStart'] += [tokenStart]
-    tokenEnd = int(els[2])
-    sdict['tokenEnd'] += [tokenEnd]
+    wordId = int(els[0])
+    #sdict['wordId'] += [wordId]
+    wordStart = int(els[1])
+    sdict['wordStart'] += [wordStart]
+    wordEnd = int(els[2])
+    sdict['wordEnd'] += [wordEnd]
                 
-    token = els[3]
-    sdict['token'] += [token]
-    vocab[token] += 1
-    if 'token' not in ddict: ddict['token'] = '######'
+    word = els[3]
+    sdict['word'] += [word]
+    vocab[word] += 1
+    if 'word' not in ddict: ddict['word'] = '######'
     
     lemma = els[4]
     #sdict['lemma'] += [lemma]
@@ -219,10 +219,10 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
     sdict['eligible'] += [mpdict['eligible'][eligible]]
     if 'eligible' not in ddict: ddict['eligible'] = 0
     
-    sparseFeatures = els[16].split()
-    sdict['sparseFeatures'] += [sparseFeatures]
+    binaryFeatures = els[16].split()
+    sdict['binaryFeatures'] += [binaryFeatures]
     if nodeFetCounter:
-        for sps in sparseFeatures: nodeFetCounter[sps] += 1
+        for sps in binaryFeatures: nodeFetCounter[sps] += 1
     
     etype = els[17]
     lookup('EVENT TYPE', etype, mpdict['type'], False)
@@ -241,7 +241,7 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
 
 def parseInst(sdict, ddict, anchorIndex, window, sentId, useEligible=False):
 
-    length = len(sdict['token'])
+    length = len(sdict['word'])
     if anchorIndex < 0 or anchorIndex >= length: return None
     
     if sdict['eligible'][anchorIndex] == 1 and useEligible: return None
@@ -260,6 +260,12 @@ def parseInst(sdict, ddict, anchorIndex, window, sentId, useEligible=False):
             if id >= 0 and id < length: addent = sdict[key][id]
             if key not in inst: inst[key] = []
             inst[key] += [addent]
+        
+        #if 'anchor' not in inst: inst['anchor'] = []
+        #addent = 0
+        #if id >= 0 and id < length:
+        #    relative = i - newAnchorIndex
+            
     
     for key in sdict:
         if key not in ddict:
@@ -375,6 +381,8 @@ if __name__=="__main__":
     rand_vecs = {}
     add_unknown_words(rand_vecs, vocab, 1, dimEmb)
     W2, _ = get_W(rand_vecs, dimEmb)
+    
+    mpdict['word'] = word_idx_map
     
     maxLength = window
     dist_size = 2*maxLength - 1

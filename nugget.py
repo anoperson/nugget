@@ -19,127 +19,83 @@ from model import *
 dataset_path = '/scratch/thn235/projects/extension/ver1/word2vec_transfer.pkl'
 
 ##################################################################
-    
-def generateDataInstance(rev, dictionaries, embeddings, features, mLen, task):
 
-    numPosition = embeddings['dist1'].shape[0]-1
-    numPartOfSpeech = embeddings['partOfSpeech'].shape[0]-1
-    numChunk = embeddings['chunk'].shape[0]-1
-    esuffix = 'Relation' if task == 'relation' else 'Event'
-    numEntity = embeddings['entity' + esuffix].shape[0]-1
-    numDependency = embeddings['dependency'].shape[0]-1
+def generateDataInstance(rev, dictionaries, embeddings, features, mLen):
 
-    x = []
-    partOfSpeech = []
-    chunk = []
-    entity = []
-    dependency = []
-    dist1 = []
-    if 'pos2' in rev: dist2 = []
+    numAnchor = embeddings['anchor'].shape[0]-1
+    numPossibleTypes = len(dictionaries['possibleTypes'])
+    numDep = len(dictionaries['dep'])
     
-    id = -1
-    for word, paro, chu, ent, deps in zip(rev["text"], rev["partOfSpeech"], rev["chunk"], rev["entity"], rev["dependency"]):
-        id += 1
-        word = ' '.join(word.split('_'))
-        if word in dictionaries["word"]:
-        
-            x.append(dictionaries["word"][word])
+    res = defaultdict(list)
+    for id in range(len(rev['word'])):
+        for fet in features:
+            if fet == 'word':
+                if rev['word'][id] not in dictionaries['word']:
+                    print 'cannot find id for word: ', rev['word'][id]
+                    exit()
+                res['word'] += dictionaries['word'][rev['word'][id]]
+                continue
             
-            depFet = [0] * numDependency
-            for did in deps:
-                depFet[did-1] = 1
-            dependency.append(depFet)
+            if fet == 'anchor':
+                anchor = numAnchor / 2 + id - rev['anchor']
+                scalar_anchor = anchor+1
+                vector_anchor = [0] * numAnchor
+                vector_anchor[anchor] = 1
+                res['anchor'].append(vector_anchor if features['anchor'] == 1 else scalar_anchor)
+                continue
             
-            posFet = [0] * numPartOfSpeech
-            posFet[paro-1] = 1
-            partOfSpeech.append((posFet if features['partOfSpeech'] == 1 else paro))
+            if fet == 'possibleTypes' or fet == 'dep':
+                vector_fet = [0] * (numDep if fet == 'dep' else numPossibleTypes)
+                for fid in rev[fet][id]:
+                    vector_fet[fid] = 1
+                res[fet].append(vector_fet)
+                continue
             
-            chuFet = [0] * numChunk
-            chuFet[chu-1] = 1
-            chunk.append((chuFet if features['chunk'] == 1 else chu))
-            
-            entFet = [0] * numEntity
-            entFet[ent-1] = 1
-            entity.append((entFet if features['entity'] == 1 else ent))
-            
-            #######pos
-            lpos1 = numPosition / 2 + id - rev["pos1"]
-            scalar_dist1 = (lpos1+1)
-            vector_dist1 = [0] * numPosition
-            vector_dist1[lpos1] = 1
-            dist1.append((vector_dist1 if features['dist1'] == 1 else scalar_dist1))
-            
-            if 'pos2' in rev:
-                lpos2 = numPosition / 2 + id - rev["pos2"]
-                scalar_dist2 = (lpos2+1)
-                vector_dist2 = [0] * numPosition
-                vector_dist2[lpos2] = 1
-                dist2.append((vector_dist2 if features['dist2'] == 1 else scalar_dist2))
-                
-        else:
-            print 'unrecognized word'
-            exit()
+            numFet = len(dictionaries[fet])-1
+            scalar_fet = rev[fet][id]
+            vector_fet = [0] * numFet
+            if scalar_fet > 0:
+                vector_fet[scalar_fet-1] = 1
+            res[fet].append(vector_fet if features[fet] == 1 else scalar_fet)
     
-    if len(x) > mLen:
-        print 'incorrect length!'
-        exit()
-    
-    if len(x) < mLen:
-        depFet = [0] * numDependency
-        posFet = [0] * numPartOfSpeech
-        chuFet = [0] * numChunk
-        entFet = [0] * numEntity
-        vector_dist1 = [0] * numPosition
-        if 'pos2' in rev:
-            vector_dist2 = [0] * numPosition
-        while len(x) < mLen:
-            x.append(0)
-            dependency.append(depFet)
-            partOfSpeech.append((posFet if features['partOfSpeech'] == 1 else 0))
-            chunk.append((chuFet if features['chunk'] == 1 else 0))
-            entity.append((entFet if features['entity'] == 1 else 0))
-            dist1.append((vector_dist1 if features['dist1'] == 1 else 0))
-            if 'pos2' in rev:
-                dist2.append((vector_dist2 if features['dist2'] == 1 else 0))
-    
-    ret = {'word' : x, 'dist1' : dist1, 'partOfSpeech' : partOfSpeech, 'chunk' : chunk, 'entity' : entity, 'dependency' : dependency}
-    if 'pos2' in rev: ret['dist2'] = dist2
-    
-    return ret
+    return res
 
-def make_data(revs, task, dictionaries, embeddings, features, tmode):
+def make_data(revs, dictionaries, embeddings, features):
 
     mLen = -1
     for datn in revs:
-        for rev in revs[datn]:
-            if len(rev["text"]) > mLen:
-                mLen = len(rev["text"])
+        for doc in revs[datn]:
+            for ins in revs[datn][doc]['instances']:
+                if len(ins['word']) > mLen:
+                    mLen = len(ins['word'])
     
     print 'maximum of length in the dataset: ', mLen
     
     res = {}
-    for rev in revs[task]:
+    idMappings = {}
+    for datn in revs:
+        res[datn] = defaultdict(list)
+        idMappings[datn] = {}
+        iid = -1
+        for doc in revs[datn]:
+            instanceId = -1
+            for rev in revs[datn][doc]['instances']:
+                ists = generateDataInstance(rev, dictionaries, embeddings, features, mLen)
+                
+                for kk in ists: res[datn][kk] += [ists[kk]]
+                
+                res[datn]['binaryFeatures'] += [rev['binaryFeatures']]
+                res[datn]['label'] += [rev['subtype']]
+                res[datn]['position'] += [rev['anchor']]
+                
+                iid += 1
+                instanceId += 1
+                ikey = datn + ' ' + doc + ' ' + str(instanceId)
+                idMappings[datn][iid] = ikey
+                res[datn]['id'] += [iid]
     
-        sot = rev["sid"]
-        sot = sot[0:sot.find('-')]
-        if tmode == 'target' and sot == 'sp': continue
-        if tmode == 'source' and sot == 'tp': continue
-        
-        ists = generateDataInstance(rev, dictionaries, embeddings, features, mLen, task)
-         
-        if rev["corpus"] not in res: res[rev["corpus"]] = defaultdict(list)
-        
-        for kk in ists:
-            res[rev["corpus"]][kk] += [ists[kk]]
-        
-        res[rev["corpus"]]['label'] += [ rev["y"] ]
-        res[rev["corpus"]]['pos1'] += [rev["pos1"]]
-        if 'pos2' in rev:
-            res[rev["corpus"]]['pos2'] += [rev["pos2"]]
-        res[rev["corpus"]]['id'] += [rev["id"]]
-        res[rev["corpus"]]['binaryFeatures'] += [rev["binaryFeatures"]]
-    
-    return res
+    return res, idMappings
+    -----------HERE----------
 
 def makeBinaryDictionary(dat, dats, cutoff=1):
     if cutoff < 0: return None, None
@@ -324,8 +280,8 @@ def saving(corpus, predictions, probs, groundtruths, idx2word, idx2label, idx2ty
     fout.close()
     fprobOut.close()
 
-def generateParameterFileName(task, model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1):
-    res = task + '.' + model + '.f-'
+def generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1):
+    res = model + '.f-'
     for fe in expected_features: res += str(expected_features[fe])
     res += '.h-' + str(nhidden)
     res += '.cf-' + str(conv_feature_map)
@@ -342,11 +298,8 @@ def isWeightConv(conv_win_feature_map, kn):
     return False
 
 def train(model='basic',
-          #encoding='ffBiDirect',
-          task='relation',
-          tmode='union',
           wedWindow=-1,
-          expected_features = OrderedDict([('partOfSpeech', -1), ('chunk', -1), ('entity', -1), ('dependency', -1), ('dist1', -1), ('dist2', -1)]),
+          expected_features = OrderedDict([('anchor', -1), ('pos', -1), ('chunk', -1), ('clause', -1), ('possibleTypes', -1), ('dep', -1), ('nonref', -1), ('title', -1), ('eligible', -1)]),
           givenPath=None,
           withEmbs=False, # using word embeddings to initialize the network or not
           updateEmbs=True,
@@ -369,27 +322,20 @@ def train(model='basic',
           nepochs=50,
           folder='./res'):
     
-    if task != 'event':
-        print 'unrecognized task: ', task
-        exit()
-    
-    #folder = '/home/thn235/projects/extension/ver1/res/' + folder
-    folder = '/scratch/thn235/projects/extension/ver1/res/' + folder
+    folder = '' + folder
 
     paramFolder = folder + '/params'
 
     if not os.path.exists(folder): os.mkdir(folder)
     if not os.path.exists(paramFolder): os.mkdir(paramFolder)
     
-    paramFileName = paramFolder + '/' + generateParameterFileName(task, model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1)
+    paramFileName = paramFolder + '/' + generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1)
 
     print 'loading dataset: ', dataset_path, ' ...'
     revs, embeddings, dictionaries = cPickle.load(open(dataset_path, 'rb'))
     
-    idx2label = dict((k,v) for v,k in dictionaries[task + 'Label'].iteritems())
+    idx2label = dict((k,v) for v,k in dictionaries['subtype'].iteritems())
     idx2word  = dict((k,v) for v,k in dictionaries['word'].iteritems())
-    esuffix = 'Relation' if task == 'relation' else 'Event'
-    idx2type = dict((k,v) for v,k in dictionaries['entity' + esuffix].iteritems())
 
     if not withEmbs:
         wordEmbs = embeddings['randomWord']
@@ -398,16 +344,12 @@ def train(model='basic',
         wordEmbs = embeddings['word']
     emb_dimension = wordEmbs.shape[1]
     
-    embs = {'word' : wordEmbs,
-            'dist1' : embeddings['dist1'],
-            #'dist2' : embeddings['dist2'],
-            'partOfSpeech' : embeddings['partOfSpeech'],
-            'chunk' : embeddings['chunk'],
-            'entity' : embeddings['entity' + esuffix],
-            'dependency' : embeddings['dependency']}
+    del embeddings['word']
+    del embeddings['randomWord']
+    embeddings['word'] = wordEmbs
     
-    if task == 'event': del expected_features['dist2'] # = -1
-    if expected_features['dependency'] >= 0: expected_features['dependency'] = 1
+    if expected_features['dep'] >= 0: expected_features['dep'] = 1
+    if expected_features['possibleTypes'] >= 0: expected_features['possibleTypes'] = 1
 
     features = OrderedDict([('word', 0)])
 
@@ -418,7 +360,7 @@ def train(model='basic',
         elif expected_features[ffin] == 1:
             print 'using features: ', ffin, ' : binary'
         
-    datasets = make_data(revs, task, dictionaries, embeddings, features, tmode)
+    datasets = make_data(revs, dictionaries, embeddings, features)
     
     dimCorpus = datasets['train']
     
@@ -433,7 +375,7 @@ def train(model='basic',
     
     features_dim = OrderedDict([('word', emb_dimension)])
     for ffin in expected_features:
-        features_dim[ffin] = ( len(dimCorpus[ffin][0][0]) if (features[ffin] == 1) else embs[ffin].shape[1] )
+        features_dim[ffin] = ( len(dimCorpus[ffin][0][0]) if (features[ffin] == 1) else embeddings[ffin].shape[1] )
     
     conv_winre = len(dimCorpus['word'][0])
     
@@ -489,7 +431,7 @@ def train(model='basic',
               'nc' : nclasses,
               'ne' : vocsize,
               'batch' : batch,
-              'embs' : embs,
+              'embs' : embeddings,
               'dropout' : dropout,
               'regularizer': regularizer,
               'norm_lim' : norm_lim,

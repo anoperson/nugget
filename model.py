@@ -458,9 +458,7 @@ class BaseModel(object):
 
         self.container['y'] = T.ivector('y') # label
         self.container['lr'] = T.scalar('lr')
-        self.container['pos1'] = T.ivector('entityPosition1')
-        if self.args['task'] == 'relation':
-            self.container['pos2'] = T.ivector('entityPosition2')
+        self.container['anchor'] = T.ivector('anchorPosition')
         self.container['binaryFeatures'] = T.imatrix('binaryFeatures')
         self.container['zeroVector'] = T.vector('zeroVector')
     
@@ -481,8 +479,7 @@ class BaseModel(object):
         gradients = T.grad( nll, self.container['params'] )
 
         classifyInput = [ self.container['vars'][ed] for ed in self.args['features'] if self.args['features'][ed] >= 0 ]
-        classifyInput += [ self.container['pos1'] ]
-        if self.args['task'] == 'relation': classifyInput += [ self.container['pos2'] ] 
+        classifyInput += [ self.container['anchor'] ]
         
         if self.args['binaryCutoff'] >= 0:
             classifyInput += [ self.container['binaryFeatures'] ]
@@ -524,7 +521,7 @@ def localWordEmbeddingsTrigger(model):
         fet = eembs[fet].flatten()
         return [fet]
     
-    rep, _ = theano.scan(fn=recurrence, sequences=[extendedWords, model.container['pos1']], n_steps=extendedWords.shape[0], non_sequences=[model.container['embDict']['word']], outputs_info=[None])
+    rep, _ = theano.scan(fn=recurrence, sequences=[extendedWords, model.container['anchor']], n_steps=extendedWords.shape[0], non_sequences=[model.container['embDict']['word']], outputs_info=[None])
     
     dim_rep = (2*wedWindow+1) * model.args['embs']['word'].shape[1]
     
@@ -537,7 +534,7 @@ class mainModel(BaseModel):
         
         fetre, dim_inter = eval(self.args['model'])(self)
         
-        if self.args['task'] == 'event' and self.args['wedWindow'] > 0:
+        if self.args['wedWindow'] > 0:
             rep, dim_rep = localWordEmbeddingsTrigger(self)
             fetre = T.concatenate([fetre, rep], axis=1)
             dim_inter += dim_rep
@@ -658,7 +655,7 @@ def alternateHead(model):
     
     _x = gruBidirectCore(_x, _ix, dimIn, model.args['nh'], model.args['batch'], '_ab_alternateHeadR', '_ab_ialternateHeadR', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
     
-    return rnnHeadIn(model, _x, i, 4 if 'pos2' in model.container else 2)
+    return rnnHeadIn(model, _x, i, 2)
     
 def alternateHeadForward(model):
 
@@ -675,7 +672,7 @@ def alternateHeadForward(model):
     
     _x = T.cast(_x.dimshuffle(1,0,2), dtype=theano.config.floatX)
     
-    return rnnHeadIn(model, _x, 2 if 'pos2' in model.container else 1)
+    return rnnHeadIn(model, _x, 1)
     
 def alternateHeadBackward(model):
 
@@ -692,7 +689,7 @@ def alternateHeadBackward(model):
     
     _x = T.cast(_x[::-1].dimshuffle(1,0,2), dtype=theano.config.floatX)
     
-    return rnnHeadIn(model, _x, 2 if 'pos2' in model.container else 1)
+    return rnnHeadIn(model, _x, 1)
 
 def alternateMax(model):
 
@@ -803,42 +800,35 @@ def convolute(model):
 ##
 def rnnHead(model):
     _x = gruBiDirect(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], model.container['dimIn'] , model.args['nh'], model.args['batch'], 'rnnHead', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
-    return rnnHeadIn(model, _x, 4 if 'pos2' in model.container else 2)
+    return rnnHeadIn(model, _x, 2)
 ##  
 def rnnHeadForward(model):
     _x = gruForward(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], model.container['dimIn'] , model.args['nh'], model.args['batch'], 'rnnHeadForward', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
-    return rnnHeadIn(model, _x, 2 if 'pos2' in model.container else 1)
+    return rnnHeadIn(model, _x, 1)
 ##
 def rnnHeadBackward(model):
     _x = gruBackward(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], model.container['dimIn'] , model.args['nh'], model.args['batch'], 'rnnHeadBackward', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
-    return rnnHeadIn(model, _x, 2 if 'pos2' in model.container else 1)
+    return rnnHeadIn(model, _x, 1)
 ##
 def rnnHeadFf(model):
     _x = ffBiDirect(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], model.container['dimIn'] , model.args['nh'], model.args['batch'], 'rnnHeadFf', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
-    return rnnHeadIn(model, _x, 4 if 'pos2' in model.container else 2)
+    return rnnHeadIn(model, _x, 2)
 ##
 def rnnHeadFfForward(model):
     _x = ffForward(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], model.container['dimIn'] , model.args['nh'], model.args['batch'], 'rnnHeadFfForward', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
-    return rnnHeadIn(model, _x, 2 if 'pos2' in model.container else 1)
+    return rnnHeadIn(model, _x, 1)
 ##
 def rnnHeadFfBackward(model):
     _x = ffBackward(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], model.container['dimIn'] , model.args['nh'], model.args['batch'], 'rnnHeadFfBackward', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
-    return rnnHeadIn(model, _x, 2 if 'pos2' in model.container else 1)
+    return rnnHeadIn(model, _x, 1)
 ##
 def rnnHeadIn(model, _x, num):
     
-    def recurrence1(x_i, pos1):
-        fet = x_i[pos1]
+    def recurrence1(x_i, anchor):
+        fet = x_i[anchor]
         return [fet]
     
-    def recurrence2(x_i, pos1, pos2):
-        fet = T.cast(T.concatenate([x_i[pos1], x_i[pos2]]), dtype=theano.config.floatX)
-        return [fet]
-    
-    if 'pos2' in model.container:
-        fRnn, _ = theano.scan(fn=recurrence2, sequences=[_x, model.container['pos1'], model.container['pos2']], outputs_info=[None], n_steps=_x.shape[0])
-    else:
-        fRnn, _ = theano.scan(fn=recurrence1, sequences=[_x, model.container['pos1']], outputs_info=[None], n_steps=_x.shape[0])
+    fRnn, _ = theano.scan(fn=recurrence1, sequences=[_x, model.container['anchor']], outputs_info=[None], n_steps=_x.shape[0])
         
     dim_rnn = num * model.args['nh']
     
