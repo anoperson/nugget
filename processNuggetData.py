@@ -6,7 +6,6 @@ import pandas as pd
 import random
 
 #thien's version
-fetCutoff = 2
 window = 31
 useEligible = False
 
@@ -51,9 +50,12 @@ def build_data(srcDir, dataCorpus):
     
     vocab = defaultdict(int)
     nodeFetCounter = defaultdict(int)
+    
+    sentId = -1
     for _data in dataCorpus:
         revs[_data] = {}
-        with open(srcDir + '/' + _dat + '.txt', 'r') as f:
+        print 'processing : ', _data
+        with open(srcDir + '/' + _data + '.txt', 'r') as f:
             for line in f:
                 line = line.strip()
                 
@@ -64,17 +66,19 @@ def build_data(srcDir, dataCorpus):
                 
                 if line == '#EndOfDocument':
                     currentDoc = ''
+                    sentId = -1
                     continue
                 
                 if not line and not currentDoc:
                     continue
                 
                 if not line:
+                    sentId += 1
                     length = len(sdict['token'])
                     lengthCounter[length] += 1
                     if length > maxLength: maxLength = length
                     for anchorIndex in range(length):
-                        inst = parseInst(sdict, ddict, anchorIndex, window, useEligible)
+                        inst = parseInst(sdict, ddict, anchorIndex, window, sentId, useEligible)
                         revs[_data][currentDoc]['instances'] += [inst]
                         updateCounters(_data, inst, corpusCountIns, corpusCountTypes, corpusCountSubTypes, corpusCountRealis)
                     sdict = defaultdict(list)
@@ -145,7 +149,7 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
                 
     if len(els) != 21:
         print 'incorrect line format: ', line
-            exit()
+        exit()
                 
     tokenId = int(els[0])
     #sdict['tokenId'] += [tokenId]
@@ -195,8 +199,9 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
     #sdict['browns'] += [browns]
     
     dep = els[12].split()
-    lookup('DEP', dep, mpdict['dep'], False)
-    sdict['dep'] += [mpdict['dep'][dep]]
+    for oneDep in dep:
+        lookup('DEP', oneDep, mpdict['dep'], False)
+    sdict['dep'] += [ [mpdict['dep'][oneDep] for oneDep in dep] ]
     if 'dep' not in ddict: ddict['dep'] = []
     
     nonref = els[13]
@@ -234,7 +239,7 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
     eeventId = els[20]
     sdict['eventId'] += [eeventId]
 
-def parseInst(sdict, ddict, anchorIndex, window, useEligible=False):
+def parseInst(sdict, ddict, anchorIndex, window, sentId, useEligible=False):
 
     length = len(sdict['token'])
     if anchorIndex < 0 or anchorIndex >= length: return None
@@ -261,6 +266,7 @@ def parseInst(sdict, ddict, anchorIndex, window, useEligible=False):
             inst[key] = sdict[key][anchorIndex]
     
     inst['anchor'] = newAnchorIndex
+    inst['sentenceId'] = sentId
     
     return inst
 
@@ -415,5 +421,5 @@ if __name__=="__main__":
         print 'size of ', di, ': ', len(mpdict[di])
     
     print 'dumping ...'
-    cPickle.dump([revs, embeddings, mpdict], open('win_' + str(window) + '.' + embType + "_nugget.pkl", "wb"))
+    cPickle.dump([revs, embeddings, mpdict], open('eligible' + ('1.' if useEligible else '0.') + 'win' + str(window) + '.' + embType + "_nugget.pkl", "wb"))
     print "dataset created!"   
