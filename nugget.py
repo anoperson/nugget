@@ -95,9 +95,8 @@ def make_data(revs, dictionaries, embeddings, features):
                 res[datn]['id'] += [iid]
     
     return res, idMappings
-    -----------HERE----------
 
-def makeBinaryDictionary(dat, dats, cutoff=1):
+def makeBinaryDictionary(dat, cutoff=1):
     if cutoff < 0: return None, None
     print '-------creating binary feature dictionary on the training data--------'
     
@@ -112,13 +111,17 @@ def makeBinaryDictionary(dat, dats, cutoff=1):
     
     print 'size of dictionary: ', len(bfd)
     
+    return bfd
+
+def findMaximumBinaryLength(dats):
+    
     maxBiLen = -1
     for corpus in dats:
         for rev in dats[corpus]['binaryFeatures']:
             if len(rev) > maxBiLen: maxBiLen = len(rev)
     print 'maximum number of binary features: ', maxBiLen
     
-    return maxBiLen, bfd
+    return maxBiLen
 
 def convertBinaryFeatures(dat, maxBiLen, bfd):
     if not bfd:
@@ -360,12 +363,9 @@ def train(model='basic',
         elif expected_features[ffin] == 1:
             print 'using features: ', ffin, ' : binary'
         
-    datasets = make_data(revs, dictionaries, embeddings, features)
+    datasets, idMappings = make_data(revs, dictionaries, embeddings, features)
     
     dimCorpus = datasets['train']
-    
-    maxBinaryFetDim, binaryFeatureDict = makeBinaryDictionary(dimCorpus, datasets, binaryCutoff)
-    binaryFeatureDim = convertBinaryFeatures(datasets, maxBinaryFetDim, binaryFeatureDict)
     
     vocsize = len(idx2word)
     nclasses = len(idx2label)
@@ -388,43 +388,17 @@ def train(model='basic',
         print '****Loading given knowledge in: ', givenPath
         kGivens = cPickle.load(open(givenPath, 'rb'))
     else: print givenPath, ' not exist'
-    #entStart = 0
-    #for fedi in features:
-    #    if fedi == 'entity': continue
-    #    if features[fedi] >= 0: entStart += features_dim[fedi]
-    #entEnd = entStart
-    #if features['entity'] >= 0: entEnd += features_dim['entity']
-    #if givenPath and os.path.exists(givenPath):
-    #    print '****Loading given knowledge in: ', givenPath
-    #    kGivens = cPickle.load(open(givenPath, 'rb'))
-    #    del kGivens['entity']
-    #    if task == 'relation':
-    #        if 'dist1' not in kGivens or 'dist2' in kGivens:
-    #            print 'cannot find dist1 or dist2 already in kGivens'
-    #            exit()
-    #        kGivens['dist2'] = numpy.copy(kGivens['dist1'])
-    #dimDist = features_dim['dist1']
-    #for kn in kGivens:
-    #    if isWeightConv(conv_win_feature_map, kn):
-    #        if entEnd > entStart:
-    #            kGivens[kn][:, :, :, entStart:entEnd] = numpy.random.uniform(-0.25,0.25,(kGivens[kn].shape[0], kGivens[kn].shape[1], kGivens[kn].shape[2], entEnd-entStart))
-    #        if task == 'event' and features['dist1'] >= 0:
-    #            kGivens[kn] = kGivens[kn][:,:,:,0:-dimDist]
-    #        if task == 'relation' and features['dist1'] >= 0:
-    #            kGivens[kn] = numpy.append(kGivens[kn], kGivens[kn][:,:,:,-dimDist:], axis=3)
-        
-    #    if (kn.endswith('_Wx') or kn.endswith('_Wc')) and not kn.startswith('_ab_'):
-    #        if entEnd > entStart:
-    #            kGivens[kn][entStart:entEnd,:] = numpy.random.uniform(-0.25,0.25,(entEnd-entStart, kGivens[kn].shape[1]))
-    #        if task == 'event' and features['dist1'] >= 0:
-    #            kGivens[kn] = kGivens[kn][0:-dimDist,:]
-    #        if task == 'relation' and features['dist1'] >= 0:
-    #            kGivens[kn] = numpy.append(kGivens[kn], kGivens[kn][-dimDist:,:], axis=0)
-    ##
     
-    params = {#'encoding' : encoding,
-              'model' : model,
-              'task' : task,
+    if 'binaryFeatureDict' in kGivens:
+        print '********** USING BINARY FEATURE DICTIONARY FROM LOADED MODEL'
+        binaryFeatureDict = kGivens['binaryFeatureDict']
+    else:
+        print '********** CREATING BINARY FEATURE DICTIONARY FROM TRAINING DATA'
+        binaryFeatureDict = makeBinaryDictionary(dimCorpus, binaryCutoff)
+    maxBinaryFetDim = findMaximumBinaryLength(datasets)
+    binaryFeatureDim = convertBinaryFeatures(datasets, maxBinaryFetDim, binaryFeatureDict)
+    
+    params = {'model' : model,
               'wedWindow' : wedWindow,
               'kGivens' : kGivens,
               'nh' : nhidden,
@@ -441,6 +415,7 @@ def train(model='basic',
               'optimizer' : optimizer,
               'binaryCutoff' : binaryCutoff,
               'binaryFeatureDim' : binaryFeatureDim,
+              'binaryFeatureDict' : binaryFeatureDict,
               'multilayerNN1' : multilayerNN1,
               'multilayerNN2' : multilayerNN2,
               'conv_winre' : conv_winre,

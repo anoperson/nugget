@@ -501,6 +501,7 @@ class BaseModel(object):
         storer = {}
         for param, name in zip(self.container['params'], self.container['names']):
             storer[name] = param.get_value()
+        storer['binaryFeatureDict'] = self.args['binaryFeatureDict']
         sp = folder
         print 'saving parameters to: ', sp
         cPickle.dump(storer, open(sp, "wb"))
@@ -570,6 +571,11 @@ class hybridModel(BaseModel):
         
         fModel, dim_model = eval(self.args['model'])(self)
         
+        if self.args['wedWindow'] > 0:
+            rep, dim_rep = localWordEmbeddingsTrigger(self)
+            fModel = T.concatenate([fModel, rep], axis=1)
+            dim_model += dim_rep
+        
         fModel_dropout = _dropout_from_layer(self.args['rng'], [fModel], self.args['dropout'])
         fModel_dropout = fModel_dropout[0]
         
@@ -594,8 +600,8 @@ class hybridModel(BaseModel):
         
         hids = [self.args['binaryFeatureDim']] + self.args['multilayerNN1'] + [self.args['nc']]
         
-        layer0_multi_W = theano.shared(randomMatrix(self.args['binaryFeatureDim'], hids[1]))
-        layer0_multi_b = theano.shared(numpy.zeros(hids[1], dtype=theano.config.floatX))
+        layer0_multi_W = theano.shared( createMatrix(randomMatrix(self.args['binaryFeatureDim'], hids[1]), self.args['kGivens'], 'l0_multiHybridModelBin_fW') )
+        layer0_multi_b = theano.shared( createMatrix(numpy.zeros(hids[1], dtype=theano.config.floatX), self.args['kGivens'], 'l0_multiHybridModelBin_fb') )
         
         self.container['params'] += [layer0_multi_W, layer0_multi_b]
         self.container['names'] += ['l0_multiHybridModelBin_fW', 'l0_multiHybridModelBin_fb']
