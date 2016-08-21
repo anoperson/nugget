@@ -1,4 +1,4 @@
-from transfer import train
+from nugget import train
 from collections import OrderedDict
 import sys
 
