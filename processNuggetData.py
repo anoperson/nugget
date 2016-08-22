@@ -155,7 +155,7 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
     #sdict['wordId'] += [wordId]
     wordStart = int(els[1])
     sdict['wordStart'] += [wordStart]
-    wordEnd = int(els[2])
+    wordEnd = int(els[2])+1
     sdict['wordEnd'] += [wordEnd]
                 
     word = els[3]

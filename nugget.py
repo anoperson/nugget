@@ -283,95 +283,110 @@ def writeout(corpus, predictions, probs, revs, idMapping, idx2word, idx2label, o
         writer.write('#EndOfDocument' + '\n')
     writer.close()
 
-def score(predictions, groundtruths):
+def myScore(goldFile, systemFile):
+    
+    gType, gSubType = readAnnotationFile(goldFile)
+    sType, sSubType = readAnnotationFile(systemFile)
+    
+    totalSpan = 0
+    for doc in gType: totalSpan += len(gType[doc])
+    predictedSpan, correctSpan = 0, 0
+    for doc in sType:
+        predictedSpan += len(sType[doc])
+        for span in sType[doc]:
+            if doc in gType and span in gType[doc]: correctSpan += 1
+            
+    spanP, spanR, spanF1 = getPerformance(totalSpan, predictedSpan, correctSpan)
+    
+    totalType = 0
+    for doc in gType:
+        for span in gType[doc]:
+            totalType += len(gType[doc][span])
+    predictedType, correctType = 0, 0
+    for doc in sType:
+        predictedType += len(sType[doc])
+        for span in sType[doc]:
+            itype = sType[doc][span][0]
+            if doc in gType and span in gType[doc] and itype in gType[doc][span]:
+                correctType += 1
+    typeP, typeR, typeF1 = getPerformance(totalType, predictedType, correctType)
+    
+    totalSubType = 0
+    for doc in gSubType:
+        for span in gSubType[doc]:
+            totalSubType += len(gSubType[doc][span])
+    predictedSubType, correctSubType = 0, 0
+    for doc in sSubType:
+        predictedSubType += len(sSubType[doc])
+        for span in sSubType[doc]:
+            isubtype = sSubType[doc][span][0]
+            if doc in gSubType and span in gSubType[doc] and isubtype in gSubType[doc][span]:
+                correctSubType += 1
+    subtypeP, subtypeR, subtypeF1 = getPerformance(totalSubType, predictedSubType, correctSubType)
+    
+    return OrderedDict({'spanP' : spanS, 'spanR' : spanR, 'spanF1' : spanF1,
+                        'typeP' : typeP, 'typeR' : typeR, 'typeF1' : typeF1,
+                        'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1})
 
-    zeros = numpy.zeros(predictions.shape, dtype='int')
-    numPred = numpy.sum(numpy.not_equal(predictions, zeros))
-    numKey = numpy.sum(numpy.not_equal(groundtruths, zeros))
-    
-    predictedIds = numpy.nonzero(predictions)
-    preds_eval = predictions[predictedIds]
-    keys_eval = groundtruths[predictedIds]
-    correct = numpy.sum(numpy.equal(preds_eval, keys_eval))
-    
-    #numPred, numKey, correct = 0, 0, 0
-    
-    precision = 100.0 * correct / numPred if numPred > 0 else 0.0
-    recall = 100.0 * correct / numKey if numKey > 0 else 0.0
-    f1 = (2.0 * precision * recall) / (precision + recall) if (precision + recall) > 0. else 0.0
-    
-    return {'p' : precision, 'r' : recall, 'f1' : f1}
+def getPerformance(total, predicted, correct):
+    p = 0.0 if predicted == 0 else 1.0 * correct / predicted
+    r = 0.0 if total == 0 else 1.0 * correct / total
+    f1 = 0.0 if (p + r) == 0 else (2*p*r) / (p+r)
+    return p, r, f1
 
-def saving(corpus, predictions, probs, groundtruths, idx2word, idx2label, idx2type, address, task):
-    
-    def determineType(type, pos1, idx2type):
-        type1 = type[pos1]
-        if type.ndim == 2:
-            nty1 = -1
-            for i, v in enumerate(type1):
-                if v == 1:
-                    nty1 = i + 1
-                    break
-            if nty1 < 0:
-                print 'negative type index'
-                exit()
-            type1 = nty1
-        return idx2type[type1]
-    
-    def generateRelSent(rid, sent, pos1, pos2, type1, type2, pred, gold, idx2word, idx2label):
-        res = str(rid) + '\t'
+def readAnnotationFile(afile):
+    typeRes = defaultdict(lambda : defaultdict(list))
+    subtypeRes = defaultdict(lambda : defaultdict(list))
+    with open(afile) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or line.startswith('@'): continue
+            
+            els = line.split('\t')
+            doc = els[1]
+            
+            span = els[3]
+            st = els[5].replace('-', '').lower()
+            etype = st[0:st.find('_')]
+            esubtype = st[(st.find('_')+1):]
+            
+            typeRes[doc][span] += [etype]
+            subtypeRes[doc][span] += [st]
+    return typeRes, subtypeRes
+
+def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
+        
+    def generateEvtSent(rid, sent, anchor, start, end, pred, idx2word, idx2label, idMapping):
+        res = idMapping[rid] + '\t'
+        res += str(start) + ',' + str(end) + '\t'
         for i, w in enumerate(sent):
             if w == 0: continue
             w = idx2word[w]
-            #w = '_'.join(w.split())
-            if i == pos1:
-                res += '<ent1-type=' + type1 + '>' + w + '</ent1>' + ' '
-            elif i == pos2:
-                res += '<ent2-type=' + type2 + '>' + w + '</ent2>' + ' '
-            else:
-                res += w + ' '
-        
-        res = res.strip()
-        res += '\t' + idx2label[gold] + '\t' + idx2label[pred] + '\t' + ('__TRUE_' if pred == gold else '__FALSE_')
-        
-        return res
-        
-    def generateEvtSent(rid, sent, pos, pred, gold, idx2word, idx2label):
-        res = str(rid) + '\t'
-        for i, w in enumerate(sent):
-            if w == 0: continue
-            w = idx2word[w]
-            #w = '_'.join(w.split())
-            if i == pos:
+            if i == anchor:
                 res += '<anchor>' + w + '</anchor>' + ' '
             else:
                 res += w + ' '
         
         res = res.strip()
-        res += '\t' + idx2label[gold] + '\t' + idx2label[pred] + '\t' + ('__TRUE_' if pred == gold else '__FALSE_')
+        res += '\t' + idx2label[pred]
         
         return res
     
-    def generateProb(rid, pro, gold, idx2label):
-        res = str(rid) + '\t'
+    def generateProb(rid, pro, start, end, idx2label, idMapping):
+        res = idMapping[rid] + '\t'
+        res += str(start) + ',' + str(end) + '\t'
         for i in range(pro.shape[0]):
             res += idx2label[i] + ':' + str(pro[i]) + ' '
-        res = res.strip() + '\t' + idx2label[gold]
+        res = res.strip()
         return res
     
     fout = open(address, 'w')
     fprobOut = open(address + '.prob', 'w')
     
-    if task == 'relation':
-        for rid, sent, pos1, pos2, type, pred, pro, gold in zip(corpus['id'], corpus['word'], corpus['pos1'], corpus['pos2'], corpus['entity'], predictions, probs, groundtruths):
-            type1 = determineType(type, pos1, idx2type)
-            type2 = determineType(type, pos2, idx2type)
-            fout.write(generateRelSent(rid, sent, pos1, pos2, type1, type2, pred, gold, idx2word, idx2label) + '\n')
-            fprobOut.write(generateProb(rid, pro, gold, idx2label) + '\n')
-    else:
-        for rid, sent, pos1, pred, pro, gold in zip(corpus['id'], corpus['word'], corpus['pos1'], predictions, probs, groundtruths):
-            fout.write(generateEvtSent(rid, sent, pos1, pred, gold, idx2word, idx2label) + '\n')
-            fprobOut.write(generateProb(rid, pro, gold, idx2label) + '\n')
+
+    for rid, sent, anchor, start, end, pred, pro in zip(corpus['id'], corpus['word'], corpus['anchor'], corpus['wordStart'], corpus['wordEnd'], predictions, probs):
+        fout.write(generateEvtSent(rid, sent, anchor, start, end, pred, idx2word, idx2label, idMapping) + '\n')
+        fprobOut.write(generateProb(rid, pro, start, end, idx2label, idMapping) + '\n')
     
     fout.close()
     fprobOut.close()
@@ -385,7 +400,6 @@ def generateParameterFileName(model, expected_features, nhidden, conv_feature_ma
     for wi in conv_win_feature_map: res += str(wi)
     res += '.mul-'
     for mu in multilayerNN1: res += str(mu)
-    res += '.pkl'
     return res
 
 def isWeightConv(conv_win_feature_map, kn):
@@ -609,15 +623,20 @@ def train(model='basic',
             _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features)
             
             writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], revs[elu], idMappings[elu], idx2word, idx2label, folder + '/' + elu + '.pred' + str(e))
-            
-            #_perfs[elu] = score(_predictions[elu], _groundtruth[elu])# folder + '/' + elu + '.txt'
-
-        #res_train = {'f1':'Not for now', 'p':'Not for now', 'r':'Not for now'}
+            _perfs[elu] = myScore(goldFile, systemFile)
+        
         perPrint(_perfs)
         
-        if _perfs['valid']['f1'] > best_f1:
+        print 'saving parameters ...'
+        reModel.save(paramFileName + str(e) + '.pkl')
+        
+        #print 'saving output ...'
+        #for elu in evaluatingDataset:
+        #    saving(evaluatingDataset[elu], _predictions[elu], _probs[elu], idx2word, idx2label, idMappings[elu], folder + '/' + elu + str(e) + '.fullPred')
+        
+        if _perfs['valid']['subtypeF1'] > best_f1:
             #rnn.save(folder)
-            best_f1 = _perfs['valid']['f1']
+            best_f1 = _perfs['valid']['subtypeF1']
             print '*************NEW BEST: epoch: ', e
             if verbose:
                 perPrint(_perfs, len('Current Performance')*'-')
@@ -626,15 +645,8 @@ def train(model='basic',
                 s[elu] = _perfs[elu]
             s['_be'] = e
             
-            print 'saving parameters ...'
-            reModel.save(paramFileName)
-            print 'saving output ...'
-            for elu in evaluatingDataset:
-                saving(evaluatingDataset[elu], _predictions[elu], _probs[elu], _groundtruth[elu], idx2word, idx2label, idx2type, folder + '/' + elu + '.best.txt', task)
             #subprocess.call(['mv', folder + '/current.test.txt', folder + '/best.test.txt'])
             #subprocess.call(['mv', folder + '/current.valid.txt', folder + '/best.valid.txt'])
-        else:
-            print ''
         
         # learning rate decay if no improvement in 10 epochs
         if decay and abs(s['_be']-s['_ce']) >= 10: clr *= 0.5 
@@ -648,12 +660,13 @@ def train(model='basic',
 def perPrint(perfs, mess='Current Performance'):
     print '------------------------------%s-----------------------------'%mess
     for elu in perfs:
-        if elu.startswith('_'):
-            continue
-        pri = elu + ' : ' + str(perfs[elu]['p']) + '\t' + str(perfs[elu]['r'])+ '\t' + str(perfs[elu]['f1'])
-        print pri
+        if elu.startswith('_'): continue
+        print '----', elu
+        print str(perfs[elu]['spanP']) + '\t' + str(perfs[elu]['spanR']) + '\t' + str(perfs[elu]['spanF1'])
+        print str(perfs[elu]['typeP']) + '\t' + str(perfs[elu]['typeR']) + '\t' + str(perfs[elu]['typeF1'])
+        print str(perfs[elu]['subtypeP']) + '\t' + str(perfs[elu]['subtypeR']) + '\t' + str(perfs[elu]['subtypeF1'])
     
     print '------------------------------------------------------------------------------'
-    
+
 if __name__ == '__main__':
     pass
