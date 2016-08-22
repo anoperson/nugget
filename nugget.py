@@ -16,6 +16,10 @@ import theano.tensor.shared_randomstreams
 from model import *
 
 dataset_path = '/misc/proteus108/thien/projects/fifth/eventNugget/nn/eligible0.win31.word2vec_nugget.pkl'
+goldFiles = OrderedDict([('train', ''),
+                         ('valid', ''),
+                         ('test', '')
+                        ])
 subtype2typeMap = {"declarebankruptcy": "business",
 
                    "artifact": "manufacture",
@@ -628,7 +632,7 @@ def train(model='basic',
             _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features)
             
             writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], revs[elu], idMappings[elu], idx2word, idx2label, folder + '/' + elu + '.pred' + str(e))
-            _perfs[elu] = myScore(goldFiles, folder + '/' + elu + '.pred' + str(e))
+            _perfs[elu] = myScore(goldFiles[elu], folder + '/' + elu + '.pred' + str(e))
         
         perPrint(_perfs)
         
