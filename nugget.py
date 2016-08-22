@@ -15,8 +15,54 @@ from theano.tensor.signal import downsample
 import theano.tensor.shared_randomstreams
 from model import *
 
-#dataset_path = '/home/thn235/projects/extension/ver1/word2vec_transfer.pkl'
-dataset_path = '/scratch/thn235/projects/extension/ver1/word2vec_transfer.pkl'
+dataset_path = ''
+subtype2typeMap = {"declarebankruptcy": "business",
+
+                   "artifact": "manufacture",
+                   
+                   "startposition": "personnel",
+                   "endposition": "personnel",
+                   "nominate": "personnel",
+                   "elect": "personnel",
+                   
+                   "demonstrate": "conflict",
+                   "attack": "conflict",
+                   
+                   "broadcast": "contact",
+                   "contact": "contact",
+                   "correspondence": "contact",
+                   "meet": "contact",
+                   
+                   "transfermoney": "transaction",
+                   "transferownership": "transaction",
+                   "transaction": "transaction",
+                   
+                   "transportartifact": "movement",
+                   "transportperson": "movement",
+                   
+                   "startorg": "business",
+                   "endorg": "business",
+                   "mergeorg": "business",
+                   
+                   "die": "life",
+                   "divorce": "life",
+                   "marry": "life",
+                   "beborn": "life",
+                   "injure": "life",
+                   
+                   "pardon": "justice",
+                   "sue": "justice",
+                   "convict": "justice",
+                   "chargeindict": "justice",
+                   "trialhearing": "justice",
+                   "sentence": "justice",
+                   "appeal": "justice",
+                   "releaseparole": "justice",
+                   "extradite": "justice",
+                   "fine": "justice",
+                   "execute": "justice",
+                   "arrestjail": "justice",
+                   "acquit": "justice"}
 
 ##################################################################
 
@@ -145,7 +191,7 @@ def getBinaryVector(fets, maxBiLen, dic):
     res[0] = id
     return res
 
-def predict(corpus, batch, reModel, idx2word, idx2label, features, task):
+def predict(corpus, batch, reModel, idx2word, idx2label, features):
     evaluateCorpus = {}
     extra_data_num = -1
     nsen = corpus['word'].shape[0]
@@ -163,9 +209,7 @@ def predict(corpus, batch, reModel, idx2word, idx2label, features, task):
     probs_corpus = []
     for i in range(numBatch):
         zippedCorpus = [ evaluateCorpus[ed][i*batch:(i+1)*batch] for ed in features if features[ed] >= 0 ]
-        zippedCorpus += [ evaluateCorpus['pos1'][i*batch:(i+1)*batch] ]
-        if task == 'relation':
-            zippedCorpus += [ evaluateCorpus['pos2'][i*batch:(i+1)*batch] ]
+        zippedCorpus += [ evaluateCorpus['anchor'][i*batch:(i+1)*batch] ]
         
         if 'binaryFeatures' in evaluateCorpus:
             zippedCorpus += [ evaluateCorpus['binaryFeatures'][i*batch:(i+1)*batch] ]
@@ -179,16 +223,65 @@ def predict(corpus, batch, reModel, idx2word, idx2label, features, task):
     if extra_data_num > 0:
         predictions_corpus = predictions_corpus[0:-extra_data_num]
         probs_corpus = probs_corpus[0:-extra_data_num]
-    
-    groundtruth_corpus = corpus['label']
-    
-    if predictions_corpus.shape[0] != groundtruth_corpus.shape[0]:
-        print 'length not matched!'
-        exit()
-    #words_corpus = [ map(lambda x: idx2word[x], w) for w in corpus['word']]
 
-    #return predictions_corpus, groundtruth_corpus, words_corpus
-    return predictions_corpus, probs_corpus, groundtruth_corpus
+    return predictions_corpus, probs_corpus
+
+def writeout(corpus, predictions, probs, revs, idMapping, idx2word, idx2label, ofile):
+
+    counter = -1
+    holder = defaultdict(list)
+    for id, pred, prob in zip(corpus['id'], predictions, probs):
+    
+        if pred == 0: continue
+    
+        counter += 1
+        if id not in idMapping:
+            print 'cannot find id : ', id , ' in mapping'
+            exit()
+        ikey = idMapping[id]
+        keyls = ikey.split()
+        doc = keyls[1]
+        instanceId = int(keyls[2])
+        
+        start = revs[doc]['instances'][instanceId]['wordStart']
+        end = revs[doc]['instances'][instanceId]['wordEnd']
+        anchor = revs[doc]['instances'][instanceId]['anchor']
+        word = revs[doc]['instances'][instanceId]['word'][anchor]
+        if pred not in idx2label:
+            print 'cannot find prediction: ', pred, ' in idx2label'
+            exit()
+        subtype = idx2label[pred]
+        if subtype not in subtype2typeMap:
+            print 'cannot find subtype: ', subtype, ' in mapping'
+            exit()
+        type = subtype2typeMap[subtype]
+        subTypeConfidence = numpy.max(prob)
+        
+        out = 'NYU'
+        out += '\t' + doc
+        out += '\t' + 'E' + str(counter)
+        out += '\t' + str(start) + ',' + str(end)
+        out += '\t' + word
+        out += '\t' + type + '_' + subtype
+        out += '\t' + 'NONE'
+        out += '\t' + '1.0'
+        out += '\t' + str(subTypeConfidence)
+        out += '\t' + '1.0'
+        
+        out += '\t' + str(instanceId)
+        
+        holder[doc] += [out]
+    
+    writer = open(ofile, 'w')
+    for doc in holder:
+        writer.write('#BeginOfDocument ' + doc + '\n')
+        for em in holder[doc]:
+            writer.write(em + '\n')
+        for i, em in enumerate(holder[doc]):
+            id = em.split('\t')[2]
+            writer.write('@Coreference' + '\t' + 'C' + str(i) + '\t' + id + '\n')
+        writer.write('#EndOfDocument' + '\n')
+    writer.close()
 
 def score(predictions, groundtruths):
 
@@ -430,7 +523,7 @@ def train(model='basic',
                 dty = 'float32' if numpy.array(datasets[corpus][ed][0]).ndim == 2 else 'int32'
                 datasets[corpus][ed] = numpy.array(datasets[corpus][ed], dtype=dty)
     
-    trainCorpus = {} #evaluatingDataset['train']
+    trainCorpus = {}
     augt = datasets['train']
     if nsentences % batch > 0:
         extra_data_num = batch - nsentences % batch
@@ -463,7 +556,7 @@ def train(model='basic',
                                      ('test', datasets['test'])
                                      ])
     
-    _predictions, _probs, _groundtruth, _perfs = OrderedDict(), OrderedDict(), OrderedDict(), OrderedDict() #, _words
+    _predictions, _probs, _perfs = OrderedDict(), OrderedDict(), OrderedDict()
     
     # training model
     best_f1 = -numpy.inf
@@ -487,15 +580,11 @@ def train(model='basic',
                     
                     trainIn[ed] = trainCorpus[ed][minibatch_index*batch:(minibatch_index+1)*batch]
 
-            trainPos1 = trainCorpus['pos1'][minibatch_index*batch:(minibatch_index+1)*batch]
+            trainAnchor = trainCorpus['anchor'][minibatch_index*batch:(minibatch_index+1)*batch]
 
             zippedData = [ trainIn[ed] for ed in trainIn ]
 
-            zippedData += [trainPos1]
-            
-            if task == 'relation':
-                trainPos2 = trainCorpus['pos2'][minibatch_index*batch:(minibatch_index+1)*batch]
-                zippedData += [trainPos2]
+            zippedData += [trainAnchor]
             
             if 'binaryFeatures' in trainCorpus:
                 zippedData += [trainCorpus['binaryFeatures'][minibatch_index*batch:(minibatch_index+1)*batch]]
@@ -517,10 +606,11 @@ def train(model='basic',
         print 'evaluating in epoch: ', e
 
         for elu in evaluatingDataset:
-            _predictions[elu], _probs[elu], _groundtruth[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features, task)
-            _perfs[elu] = score(_predictions[elu], _groundtruth[elu])# folder + '/' + elu + '.txt'
-
-        # evaluation // compute the accuracy using conlleval.pl
+            _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features)
+            
+            writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], revs[elu], idMappings[elu], idx2word, idx2label, folder + '/' + elu + '.pred' + str(e))
+            
+            #_perfs[elu] = score(_predictions[elu], _groundtruth[elu])# folder + '/' + elu + '.txt'
 
         #res_train = {'f1':'Not for now', 'p':'Not for now', 'r':'Not for now'}
         perPrint(_perfs)
