@@ -628,7 +628,7 @@ def train(model='basic',
             _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features)
             
             writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], revs[elu], idMappings[elu], idx2word, idx2label, folder + '/' + elu + '.pred' + str(e))
-            _perfs[elu] = myScore(goldFile, systemFile)
+            _perfs[elu] = myScore(goldFiles, folder + '/' + elu + '.pred' + str(e))
         
         perPrint(_perfs)
         
