@@ -37,7 +37,7 @@ def build_data(srcDir, dataCorpus):
     mpdict = {}
     mpdict['pos'] = {'######':0}
     mpdict['chunk'] = {'######':0,'O':1}
-    mpdict['clause'] = {'######':0}
+    #mpdict['clause'] = {'######':0}
     mpdict['possibleTypes'] = {'NONE':0}
     mpdict['dep'] = {'NONE':0}
     mpdict['nonref'] = {'######':0,'false':1}
@@ -179,11 +179,9 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
     #sdict['nomlex'] += [nomlex]
     
     clause = els[8]
-    if clause not in mpdict['clause']:
-        mpdict['clause'][clause] = int(clause) + 1
-        print 'CLAUSE: ', clause, ' id --> ', mpdict['clause'][clause]
-    sdict['clause'] += [mpdict['clause'][clause]]
-    if 'clause' not in ddict: ddict['clause'] = 0
+    #lookup('CLAUSE', clause, mpdict['clause'], False)
+    #sdict['clause'] += [mpdict['clause'][clause]]
+    #if 'clause' not in ddict: ddict['clause'] = 0
     
     possibleTypes = els[9].split()
     for piptype in possibleTypes:
@@ -397,9 +395,9 @@ if __name__=="__main__":
     CHUNK = np.random.uniform(-0.25,0.25,(len(mpdict['chunk']),chunk_dim))
     CHUNK[0] = np.zeros(chunk_dim)
     
-    clause_dim = 50
-    CLAUSE = np.random.uniform(-0.25,0.25,(len(mpdict['clause']),clause_dim))
-    CLAUSE[0] = np.zeros(clause_dim)
+    #clause_dim = 50
+    #CLAUSE = np.random.uniform(-0.25,0.25,(len(mpdict['clause']),clause_dim))
+    #CLAUSE[0] = np.zeros(clause_dim)
     
     nonref_dim = 50
     NONREF = np.random.uniform(-0.25,0.25,(len(mpdict['nonref']),nonref_dim))
@@ -419,7 +417,7 @@ if __name__=="__main__":
     embeddings['anchor'] = D
     embeddings['pos'] = POS
     embeddings['chunk'] = CHUNK
-    embeddings['clause'] = CLAUSE
+    #embeddings['clause'] = CLAUSE
     embeddings['nonref'] = NONREF
     embeddings['title'] = TITLE
     embeddings['eligible'] = ELIGIBLE

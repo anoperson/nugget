@@ -15,7 +15,7 @@ from theano.tensor.signal import downsample
 import theano.tensor.shared_randomstreams
 from model import *
 
-dataset_path = ''
+dataset_path = '/misc/proteus108/thien/projects/fifth/eventNugget/nn/eligible0.win31.word2vec_nugget.pkl'
 subtype2typeMap = {"declarebankruptcy": "business",
 
                    "artifact": "manufacture",
@@ -79,7 +79,7 @@ def generateDataInstance(rev, dictionaries, embeddings, features, mLen):
                 if rev['word'][id] not in dictionaries['word']:
                     print 'cannot find id for word: ', rev['word'][id]
                     exit()
-                res['word'] += dictionaries['word'][rev['word'][id]]
+                res['word'] += [ dictionaries['word'][rev['word'][id]] ]
                 continue
             
             if fet == 'anchor':
@@ -209,7 +209,7 @@ def predict(corpus, batch, reModel, idx2word, idx2label, features):
     probs_corpus = []
     for i in range(numBatch):
         zippedCorpus = [ evaluateCorpus[ed][i*batch:(i+1)*batch] for ed in features if features[ed] >= 0 ]
-        zippedCorpus += [ evaluateCorpus['anchor'][i*batch:(i+1)*batch] ]
+        zippedCorpus += [ evaluateCorpus['position'][i*batch:(i+1)*batch] ]
         
         if 'binaryFeatures' in evaluateCorpus:
             zippedCorpus += [ evaluateCorpus['binaryFeatures'][i*batch:(i+1)*batch] ]
@@ -384,7 +384,7 @@ def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
     fprobOut = open(address + '.prob', 'w')
     
 
-    for rid, sent, anchor, start, end, pred, pro in zip(corpus['id'], corpus['word'], corpus['anchor'], corpus['wordStart'], corpus['wordEnd'], predictions, probs):
+    for rid, sent, anchor, start, end, pred, pro in zip(corpus['id'], corpus['word'], corpus['position'], corpus['wordStart'], corpus['wordEnd'], predictions, probs):
         fout.write(generateEvtSent(rid, sent, anchor, start, end, pred, idx2word, idx2label, idMapping) + '\n')
         fprobOut.write(generateProb(rid, pro, start, end, idx2label, idMapping) + '\n')
     
@@ -411,7 +411,7 @@ def isWeightConv(conv_win_feature_map, kn):
 
 def train(model='basic',
           wedWindow=-1,
-          expected_features = OrderedDict([('anchor', -1), ('pos', -1), ('chunk', -1), ('clause', -1), ('possibleTypes', -1), ('dep', -1), ('nonref', -1), ('title', -1), ('eligible', -1)]),
+          expected_features = OrderedDict([('anchor', -1), ('pos', -1), ('chunk', -1), ('possibleTypes', -1), ('dep', -1), ('nonref', -1), ('title', -1), ('eligible', -1)]),
           givenPath=None,
           withEmbs=False, # using word embeddings to initialize the network or not
           updateEmbs=True,
@@ -484,7 +484,10 @@ def train(model='basic',
     
     features_dim = OrderedDict([('word', emb_dimension)])
     for ffin in expected_features:
-        features_dim[ffin] = ( len(dimCorpus[ffin][0][0]) if (features[ffin] == 1) else embeddings[ffin].shape[1] )
+        if features[ffin] == 1:
+            features_dim[ffin] = len(dimCorpus[ffin][0][0])
+        elif features[ffin] == 0:
+            features_dim[ffin] = embeddings[ffin].shape[1]
     
     conv_winre = len(dimCorpus['word'][0])
     
@@ -596,7 +599,7 @@ def train(model='basic',
                     
                     trainIn[ed] = trainCorpus[ed][minibatch_index*batch:(minibatch_index+1)*batch]
 
-            trainAnchor = trainCorpus['anchor'][minibatch_index*batch:(minibatch_index+1)*batch]
+            trainAnchor = trainCorpus['position'][minibatch_index*batch:(minibatch_index+1)*batch]
 
             zippedData = [ trainIn[ed] for ed in trainIn ]
 

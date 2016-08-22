@@ -43,12 +43,14 @@ def fmStr(ft):
 if __name__=='__main__':
     pars={'model' : 'convolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv
           'wedWindow' : 2,
-          'expected_features' : OrderedDict([('partOfSpeech', -1),
+          'expected_features' : OrderedDict([('anchor', 0),
+                                             ('pos', -1),
                                              ('chunk', -1),
-                                             ('entity', 0),
-                                             ('dependency', -1),
-                                             ('dist1', 0),
-                                             ('dist2', 0)]),
+                                             ('possibleTypes', -1),
+                                             ('dep', 1),
+                                             ('nonref', -1),
+                                             ('title', -1),
+                                             ('eligible', -1),]),
           'givenPath' : None,                          
           'withEmbs' : True,
           'updateEmbs' : True,
@@ -69,10 +71,8 @@ if __name__=='__main__':
           'seed' : 3435,
           'nepochs' : 20,
           'folder' : './res'}
-    prefix = sys.argv[4]
-    folder = 'mo_' + pars['tmode'] \
+    folder = 'model_' + pars['model'] \
              + '.wi_' + str(pars['wedWindow']) \
-             + '.model_' + pars['model'] \
              + '.h_' + str(pars['nhidden']) \
              + '.embs_' + str(pars['withEmbs']) \
              + '.upd_' + str(pars['updateEmbs']) \
