@@ -143,7 +143,7 @@ def make_data(revs, dictionaries, embeddings, features):
     return res, idMappings
 
 def makeBinaryDictionary(dat, cutoff=1):
-    if cutoff < 0: return None, None
+    if cutoff < 0: return None
     print '-------creating binary feature dictionary on the training data--------'
     
     bfdCounter = defaultdict(int)
