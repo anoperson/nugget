@@ -2,7 +2,6 @@ import numpy as np
 import cPickle
 from collections import defaultdict, OrderedDict
 import sys, re
-import pandas as pd
 import random
 
 #thien's version
