@@ -5,8 +5,6 @@ import sys
 def main(params):
     print params
     train(model = params['model'],
-          task = params['task'],
-          tmode = params['tmode'],
           wedWindow = params['wedWindow'],
           expected_features = params['expected_features'],
           givenPath = params['givenPath'],
@@ -44,8 +42,6 @@ def fmStr(ft):
 
 if __name__=='__main__':
     pars={'model' : 'convolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv
-          'task' : 'event',
-          'tmode' : 'source',
           'wedWindow' : 2,
           'expected_features' : OrderedDict([('partOfSpeech', -1),
                                              ('chunk', -1),
@@ -73,12 +69,8 @@ if __name__=='__main__':
           'seed' : 3435,
           'nepochs' : 20,
           'folder' : './res'}
-    pars['model'] = sys.argv[1]
-    pars['tmode'] = sys.argv[2]
-    pars['wedWindow'] = int(sys.argv[3])
     prefix = sys.argv[4]
-    folder = 'task_' + pars['task'] \
-             + '.mo_' + pars['tmode'] \
+    folder = 'mo_' + pars['tmode'] \
              + '.wi_' + str(pars['wedWindow']) \
              + '.model_' + pars['model'] \
              + '.h_' + str(pars['nhidden']) \
@@ -98,5 +90,5 @@ if __name__=='__main__':
              + '.norm_' + str(pars['norm_lim']) \
              + '.s_' + str(pars['seed'])
     if pars['givenPath']: folder += '.gp'
-    pars['folder'] =  prefix + '.' + folder #t7-s60.
+    pars['folder'] =  folder
     main(pars)

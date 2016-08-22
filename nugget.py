@@ -391,15 +391,17 @@ def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
     fout.close()
     fprobOut.close()
 
-def generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1):
+def generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1, multilayerNN2):
     res = model + '.f-'
     for fe in expected_features: res += str(expected_features[fe])
     res += '.h-' + str(nhidden)
     res += '.cf-' + str(conv_feature_map)
     res += '.cwf-'
     for wi in conv_win_feature_map: res += str(wi)
-    res += '.mul-'
+    res += '.mul1-'
     for mu in multilayerNN1: res += str(mu)
+    res += '.mul2-'
+    for mu in multilayerNN2: res += str(mu)
     return res
 
 def isWeightConv(conv_win_feature_map, kn):
@@ -432,14 +434,14 @@ def train(model='basic',
           nepochs=50,
           folder='./res'):
     
-    folder = '' + folder
+    folder = './res/' + folder
 
     paramFolder = folder + '/params'
 
     if not os.path.exists(folder): os.mkdir(folder)
     if not os.path.exists(paramFolder): os.mkdir(paramFolder)
     
-    paramFileName = paramFolder + '/' + generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1)
+    paramFileName = paramFolder + '/' + generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1, multilayerNN2)
 
     print 'loading dataset: ', dataset_path, ' ...'
     revs, embeddings, dictionaries = cPickle.load(open(dataset_path, 'rb'))
