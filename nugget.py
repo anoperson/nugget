@@ -328,7 +328,7 @@ def myScore(goldFile, systemFile):
                 correctSubType += 1
     subtypeP, subtypeR, subtypeF1 = getPerformance(totalSubType, predictedSubType, correctSubType)
     
-    return OrderedDict({'spanP' : spanS, 'spanR' : spanR, 'spanF1' : spanF1,
+    return OrderedDict({'spanP' : spanP, 'spanR' : spanR, 'spanF1' : spanF1,
                         'typeP' : typeP, 'typeR' : typeR, 'typeF1' : typeF1,
                         'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1})
 
