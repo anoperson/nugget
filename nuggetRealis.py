@@ -120,7 +120,7 @@ def generateDataInstance(rev, dictionaries, embeddings, features, window):
     
     return res
 
-def make_data(revs, dictionaries, embeddings, features, window):
+def make_data(revs, dictionaries, embeddings, features, window, eventTypePath):
 
     mLen = -1
     for datn in revs:
@@ -132,6 +132,12 @@ def make_data(revs, dictionaries, embeddings, features, window):
     print 'maximum length in th original dataset: ', mLen
     print 'using window for instances: ', window
     
+    typeDict = dict((k,v) for v,k in dictionaries['type'].iteritems())
+    subtypeDict = dict((k,v) for v,k in dictionaries['subtype'].iteritems())
+    realisDict = dict((k,v) for v,k in dictionaries['realis'].iteritems())
+    
+    eventTypeStorer, realisStorer, wholeLineEventTypeRealisStorer = readEventTypeFile(eventTypePath)
+    
     res = {}
     idMappings = {}
     for datn in revs:
@@ -141,21 +147,82 @@ def make_data(revs, dictionaries, embeddings, features, window):
         for doc in revs[datn]:
             instanceId = -1
             for rev in revs[datn][doc]['instances']:
+            
+                instanceId += 1
+                ikey = datn + ' ' + doc + ' ' + str(instanceId)
+                
+                if ikey not in eventTypeStorer: continue
+                if rev['type'] == 0 or rev['subtype'] == 0 or rev['realis'] == -1:
+                    print 'should be an event istance here, but label from original data does not show that!'
+                    exit()
+                
+                fetType, fetSubtype = parseTypeSubType(eventTypeStorer[ikey], rev, datn, typeDict, subtypeDict)
+            
                 ists = generateDataInstance(rev, dictionaries, embeddings, features, window)
                 
                 for kk in ists: res[datn][kk] += [ists[kk]]
                 
-                res[datn]['binaryFeatures'] += [rev['binaryFeatures']]
-                res[datn]['label'] += [rev['subtype']]
+                stFeatures = ['EventType=' + fetType, 'EventSubType=' + fetSubtype]
+                res[datn]['binaryFeatures'] += [rev['binaryFeatures'] + stFeatures]
+                
                 res[datn]['position'] += [rev['anchor']]
                 
+                if datn != 'test' and realisDict[rev['realis']] != realisStorer[ikey]:
+                    print 'realis mismatched in make data: ', datn, realisDict[rev['realis']], ' vs ', realisStorer[ikey]
+                    exit()
+                res[datn]['label'] += [rev['realis'] if datn != 'test' else -1]
+                
+                
                 iid += 1
-                instanceId += 1
-                ikey = datn + ' ' + doc + ' ' + str(instanceId)
                 idMappings[datn][iid] = ikey
                 res[datn]['id'] += [iid]
     
-    return res, idMappings
+    return res, idMappings, wholeLineEventTypeRealisStorer
+    
+def parseTypeSubType(st, rev, datn, typeDict, subtypeDict):
+    els = st.split('_')
+    fetType, fetSubtype = els[0], els[1]
+    
+    cpType, cpSubType = typeDict[rev['type']], subtypeDict[rev['subtype']]
+    
+    if datn != 'test' and fetType != cpType:
+        print 'type from realis file and original dataset not matched: ', datn, fetType, ' vs ', cpType
+        exit()
+    if datn != 'test' and fetSubtype != cpSubType:
+        print 'subtype from realis file and original dataset not matched: ', datn, fetSubtype, ' vs ', cpSubType
+        exit()
+    
+    return fetType, fetSubtype
+    
+def readEventTypeFile(eventTypePath):
+    ccps = ['train', 'test', 'valid']
+    eventTypeStorer = {}
+    realisStorer = {}
+    wholeLineEventTypeRealisStorer = {}
+    print 'reading ids of instances with types for realis ...'
+    for ccp in ccps:
+        with open(eventTypePath + '/' + ccp + '.txt') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or line.startswith('@'): continue
+            
+                els = line.split('\t')
+                doc = els[1]
+            
+                #span = els[3]
+                st = els[5].replace('-', '').lower()
+                
+                reli = els[6]
+                
+                instanceId = els[-1]
+                
+                key = ccp + ' ' + doc + ' ' + instanceId
+                
+                eventTypeStorer[key] = st
+                realisStorer[key] = reli
+                wholeLineEventTypeRealisStorer[key] = line
+            
+    return eventTypeStorer, realisStorer, wholeLineEventTypeRealisStorer
 
 def makeBinaryDictionary(dat, cutoff=1):
     if cutoff < 0: return None
@@ -241,51 +308,41 @@ def predict(corpus, batch, reModel, idx2word, idx2label, features):
 
     return predictions_corpus, probs_corpus
 
-def writeout(corpus, predictions, probs, revs, idMapping, idx2word, idx2label, ofile):
+def writeout(corpus, predictions, probs, idMapping, wholeLineEventTypeRealisStorer, idx2label, ofile):
 
-    counter = -1
     holder = defaultdict(list)
     for id, pred, prob in zip(corpus['id'], predictions, probs):
     
-        if pred == 0: continue
-    
-        counter += 1
         if id not in idMapping:
             print 'cannot find id : ', id , ' in mapping'
             exit()
         ikey = idMapping[id]
-        keyls = ikey.split()
-        doc = keyls[1]
-        instanceId = int(keyls[2])
+        docMap = ikey.split()[1]
         
-        start = revs[doc]['instances'][instanceId]['wordStart']
-        end = revs[doc]['instances'][instanceId]['wordEnd']
-        anchor = revs[doc]['instances'][instanceId]['anchor']
-        word = revs[doc]['instances'][instanceId]['word'][anchor]
+        if ikey not in wholeLineEventTypeRealisStorer:
+            print 'cannot find key: ', key, ' in wholeLineEventTypeRealisStorer. It should be there as we only consider detected event instances now.'
+            exit()
+        
+        line = wholeLineEventTypeRealisStorer[ikey]
+        
         if pred not in idx2label:
-            print 'cannot find prediction: ', pred, ' in idx2label'
+            print 'cannot find realis prediction: ', pred, ' in idx2label'
             exit()
-        subtype = idx2label[pred]
-        if subtype not in subtype2typeMap:
-            print 'cannot find subtype: ', subtype, ' in mapping'
+        realis = idx2label[pred]
+        realisConfidence = numpy.max(prob)
+        
+        els = line.split('\t')
+        els[6] = realis
+        els[9] = str(realisConfidence)
+        
+        docOut = els[1]
+        if docOut != docMap:
+            print 'document mismatch in writeout for realis: ', docOut, ' vs ', docMap
             exit()
-        type = subtype2typeMap[subtype]
-        subTypeConfidence = numpy.max(prob)
         
-        out = 'NYU'
-        out += '\t' + doc
-        out += '\t' + 'E' + str(counter)
-        out += '\t' + str(start) + ',' + str(end)
-        out += '\t' + word
-        out += '\t' + type + '_' + subtype
-        out += '\t' + 'NONE'
-        out += '\t' + '1.0'
-        out += '\t' + str(subTypeConfidence)
-        out += '\t' + '1.0'
+        out += '\t'.join(els)
         
-        out += '\t' + str(instanceId)
-        
-        holder[doc] += [out]
+        holder[docOut] += [out]
     
     writer = open(ofile, 'w')
     for doc in holder:
@@ -300,8 +357,8 @@ def writeout(corpus, predictions, probs, revs, idMapping, idx2word, idx2label, o
 
 def myScore(goldFile, systemFile):
     
-    gType, gSubType = readAnnotationFile(goldFile)
-    sType, sSubType = readAnnotationFile(systemFile)
+    gType, gSubType, gRealis = readAnnotationFile(goldFile)
+    sType, sSubType, sRealis = readAnnotationFile(systemFile)
     
     totalSpan = 0
     for doc in gType: totalSpan += len(gType[doc])
@@ -339,9 +396,26 @@ def myScore(goldFile, systemFile):
                 correctSubType += 1
     subtypeP, subtypeR, subtypeF1 = getPerformance(totalSubType, predictedSubType, correctSubType)
     
+    totalRealis = 0
+    for doc in gRealis:
+        for span in gRealis[doc]:
+            totalRealis += len(gRealis[doc][span])
+    predictedRealis, correctRealis = 0, 0
+    for doc in sRealis:
+        predictedRealis += len(sSubType[doc])
+        for span in sRealis[doc]:
+            irealis = next(iter(sRealis[doc][span])) #sRealis[doc][span][0]
+            if doc not in sSubType or span not in sSubType[doc]: continue
+            isubtype = next(iter(sSubType[doc][span])) #sSubType[doc][span][0]
+            if doc in gRealis and span in gRealis[doc] and doc in gSubType and span in gSubType[doc] and isubtype in gSubType[doc][span] and irealis in gRealis[doc][span]:
+                correctRealis += 1
+    realisP, realisR, realisF1 = getPerformance(totalRealis, predictedRealis, correctRealis)
+    
+    
     return OrderedDict({'spanP' : spanP, 'spanR' : spanR, 'spanF1' : spanF1,
                         'typeP' : typeP, 'typeR' : typeR, 'typeF1' : typeF1,
-                        'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1})
+                        'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1,
+                        'realisP' : realisP, 'realisR' : realisR, 'realisF1' : realisF1})
 
 def getPerformance(total, predicted, correct):
     p = 0.0 if predicted == 0 else 1.0 * correct / predicted
@@ -352,6 +426,7 @@ def getPerformance(total, predicted, correct):
 def readAnnotationFile(afile):
     typeRes = defaultdict(lambda : defaultdict(set))
     subtypeRes = defaultdict(lambda : defaultdict(set))
+    realisRes = defaultdict(lambda : defaultdict(set))
     with open(afile) as f:
         for line in f:
             line = line.strip()
@@ -365,9 +440,12 @@ def readAnnotationFile(afile):
             etype = st[0:st.find('_')]
             esubtype = st[(st.find('_')+1):]
             
+            realis = els[6]
+            
             typeRes[doc][span].add(etype) # += [etype]
             subtypeRes[doc][span].add(st) # += [st]
-    return typeRes, subtypeRes
+            realisRes[doc][span].add(realis) # += [realis]
+    return typeRes, subtypeRes, realisRes
 
 def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
         
@@ -407,7 +485,7 @@ def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
     fprobOut.close()
 
 def generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1, multilayerNN2):
-    res = model + '.f-'
+    res = 'realis.' + model + '.f-'
     for fe in expected_features: res += str(expected_features[fe])
     res += '.h-' + str(nhidden)
     res += '.cf-' + str(conv_feature_map)
@@ -420,6 +498,7 @@ def generateParameterFileName(model, expected_features, nhidden, conv_feature_ma
     return res
 
 def train(dataset_path='',
+          eventTypePath='',
           model='basic',
           wedWindow=-1,
           window=31,
@@ -460,7 +539,7 @@ def train(dataset_path='',
     print 'loading dataset: ', dataset_path, ' ...'
     revs, embeddings, dictionaries = cPickle.load(open(dataset_path, 'rb'))
     
-    idx2label = dict((k,v) for v,k in dictionaries['subtype'].iteritems())
+    idx2label = dict((k,v) for v,k in dictionaries['realis'].iteritems())
     idx2word  = dict((k,v) for v,k in dictionaries['word'].iteritems())
 
     if not withEmbs:
@@ -498,7 +577,7 @@ def train(dataset_path='',
         window = kGivens['window']
     if window % 2 == 0: window += 1
     
-    datasets, idMappings = make_data(revs, dictionaries, embeddings, features, window)
+    datasets, idMappings, wholeLineEventTypeRealisStorer = make_data(revs, dictionaries, embeddings, features, window, eventTypePath)
     
     dimCorpus = datasets['train']
     
@@ -647,8 +726,9 @@ def train(dataset_path='',
         for elu in evaluatingDataset:
             _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features)
             
-            writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], revs[elu], idMappings[elu], idx2word, idx2label, folder + '/' + elu + '.pred' + str(e))
-            _perfs[elu] = myScore(goldFiles[elu], folder + '/' + elu + '.pred' + str(e))
+            writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], idMappings[elu], wholeLineEventTypeRealisStorer, idx2label, folder + '/' + elu + '.realis.pred' + str(e))
+            
+            _perfs[elu] = myScore(goldFiles[elu], folder + '/' + elu + '.realis.pred' + str(e))
         
         perPrint(_perfs)
         
@@ -657,11 +737,11 @@ def train(dataset_path='',
         
         #print 'saving output ...'
         #for elu in evaluatingDataset:
-        #    saving(evaluatingDataset[elu], _predictions[elu], _probs[elu], idx2word, idx2label, idMappings[elu], folder + '/' + elu + str(e) + '.fullPred')
+        #    saving(evaluatingDataset[elu], _predictions[elu], _probs[elu], idx2word, idx2label, idMappings[elu], folder + '/' + elu + str(e) + '.realis.fullPred')
         
-        if _perfs['valid']['subtypeF1'] > best_f1:
+        if _perfs['valid']['realisF1'] > best_f1:
             #rnn.save(folder)
-            best_f1 = _perfs['valid']['subtypeF1']
+            best_f1 = _perfs['valid']['realisF1']
             print '*************NEW BEST: epoch: ', e
             if verbose:
                 perPrint(_perfs, len('Current Performance')*'-')
@@ -690,6 +770,7 @@ def perPrint(perfs, mess='Current Performance'):
         print str(perfs[elu]['spanP']) + '\t' + str(perfs[elu]['spanR']) + '\t' + str(perfs[elu]['spanF1'])
         print str(perfs[elu]['typeP']) + '\t' + str(perfs[elu]['typeR']) + '\t' + str(perfs[elu]['typeF1'])
         print str(perfs[elu]['subtypeP']) + '\t' + str(perfs[elu]['subtypeR']) + '\t' + str(perfs[elu]['subtypeF1'])
+        print str(perfs[elu]['realisP']) + '\t' + str(perfs[elu]['realisR']) + '\t' + str(perfs[elu]['realisF1'])
     
     print '------------------------------------------------------------------------------'
 

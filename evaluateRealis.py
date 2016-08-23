@@ -1,4 +1,4 @@
-from nugget import train
+from nuggetRealis import train
 from collections import OrderedDict
 import sys
 import argparse
@@ -6,6 +6,7 @@ import argparse
 def main(params):
     print params
     train(dataset_path = params['dataset_path'],
+          eventTypePath = params['eventTypePath'],
           model = params['model'],
           wedWindow = params['wedWindow'],
           window = params['window'],
@@ -47,6 +48,7 @@ def argsp():
     aparser = argparse.ArgumentParser()
     
     aparser.add_argument('--dataset_path', help='path to the pkl dataset file')
+    aparser.add_argument('--eventTypePath', help='path to detected event instances with types')
     aparser.add_argument('--model', help='model to be used, see the code for potential options')
     aparser.add_argument('--wedWindow', help='window for local context (concatenation of surrouding emeddings)', type=int)
     aparser.add_argument('--window', help='window for instances', type=int)
@@ -85,6 +87,7 @@ def argsp():
 if __name__=='__main__':
     
     pars={'dataset_path' : '/misc/proteus108/thien/projects/fifth/eventNugget/nn/eligible0.win31.word2vec_nugget.pkl',
+          'eventTypePath' : '',
           'model' : 'convolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv
           'wedWindow' : 2,
           'window' : 31,
@@ -150,6 +153,6 @@ if __name__=='__main__':
              + '.norm_' + str(pars['norm_lim']) \
              + '.s_' + str(pars['seed'])
     if pars['givenPath']: folder += '.gp'
-    pars['folder'] =  folder
+    pars['folder'] =  'realis.' + folder
     
     main(pars)

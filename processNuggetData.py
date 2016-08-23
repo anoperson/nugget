@@ -45,7 +45,7 @@ def build_data(srcDir, dataCorpus):
     mpdict['eligible'] = {'######':0,'0':1}
     mpdict['type'] = {'NONE':0}
     mpdict['subtype'] = {'NONE':0}
-    mpdict['realis'] = {'NONE':0}
+    mpdict['realis'] = {'other':0}
     
     vocab = defaultdict(int)
     nodeFetCounter = defaultdict(int)
@@ -230,8 +230,11 @@ def parseLine(line, sdict, ddict, mpdict, vocab, nodeFetCounter):
     sdict['subtype'] += [mpdict['subtype'][esubtype]]
     
     erealis = els[19]
-    lookup('EVENT REALIS', erealis, mpdict['realis'], False)
-    sdict['realis'] += [mpdict['realis'][erealis]]
+    if erealis == 'NONE': sdict['realis'] += [-1]
+    else:
+        erealis = erealis.lower()
+        lookup('EVENT REALIS', erealis, mpdict['realis'], False)
+        sdict['realis'] += [mpdict['realis'][erealis]]
     
     eeventId = els[20]
     sdict['eventId'] += [eeventId]

@@ -502,6 +502,7 @@ class BaseModel(object):
         for param, name in zip(self.container['params'], self.container['names']):
             storer[name] = param.get_value()
         storer['binaryFeatureDict'] = self.args['binaryFeatureDict']
+        storer['window'] = self.args['window']
         sp = folder
         print 'saving parameters to: ', sp
         cPickle.dump(storer, open(sp, "wb"))
@@ -593,8 +594,8 @@ class hybridModel(BaseModel):
         self.container['params'] += [model_fW, model_fb]
         self.container['names'] += ['multiHybridModelNN_sfW', 'multiHybridModelNN_sfb']
         
-        fModel_dropout = T.exp(T.dot(fModel_dropout, model_fW) + model_fb)
-        fModel = T.exp(T.dot(fModel , (1.0 - self.args['dropout']) * model_fW) + model_fb)
+        fModel_dropout = T.dot(fModel_dropout, model_fW) + model_fb
+        fModel = T.dot(fModel , (1.0 - self.args['dropout']) * model_fW) + model_fb
         
         #-----multilayer nn
         
@@ -632,18 +633,17 @@ class hybridModel(BaseModel):
             fMulti = T.dot(fMulti , fW) + fb
             fMulti_dropout = fMulti
             
-        fMulti = T.exp(fMulti)
+        fMulti = fMulti
         fMulti_dropout = fMulti
         
-        fetre = fModel * fMulti
-        fetre_dropout = fModel_dropout * fMulti_dropout
+        fetre = fModel + fMulti
+        fetre_dropout = fModel_dropout + fMulti_dropout
         
-        su = T.cast(fetre.sum(1).dimshuffle(0,'x'), dtype=theano.config.floatX)
-        su_dropout = T.cast(fetre_dropout.sum(1).dimshuffle(0,'x'), dtype=theano.config.floatX)
+        su = T.exp(fetre - fetre.max(axis=1, keepdims=True))
+        p_y_given_x = su / su.sum(axis=1, keepdims=True)
         
-        p_y_given_x_dropout = fetre_dropout / su_dropout
-
-        p_y_given_x = fetre / su
+        su_dropout = T.exp(fetre_dropout - fetre_dropout.max(axis=1, keepdims=True))
+        p_y_given_x_dropout = su_dropout / su_dropout.sum(axis=1, keepdims=True)
         
         self.buildFunctions(p_y_given_x, p_y_given_x_dropout)
 
@@ -661,7 +661,7 @@ def alternateHead(model):
     
     _x = gruBidirectCore(_x, _ix, dimIn, model.args['nh'], model.args['batch'], '_ab_alternateHeadR', '_ab_ialternateHeadR', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
     
-    return rnnHeadIn(model, _x, i, 2)
+    return rnnHeadIn(model, _x, 2)
     
 def alternateHeadForward(model):
 
