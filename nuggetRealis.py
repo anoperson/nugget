@@ -527,7 +527,7 @@ def train(dataset_path='',
           
     if binaryCutoff > 0 and not model.startswith('#'): model = '#' + model
     
-    folder = './res/' + folder
+    folder = './resRealis/' + folder
 
     paramFolder = folder + '/params'
 
