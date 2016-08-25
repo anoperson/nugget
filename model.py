@@ -380,6 +380,155 @@ def convContext(inps, feature_map, convWins, batch, length, dim, prefix, params,
 
     return convRep
     
+def nonConsecutiveConvLayer2(inpu, feature_map, batch, length, dim, prefix, params, names, kGivens={}):
+    window = 2
+    fan_in = window * dim
+    fan_out = feature_map * window * dim / length #(length - window + 1)
+    W_bound = numpy.sqrt(6. / (fan_in + fan_out))
+    Ws = []
+    for i in range(window):
+        conv_W = theano.shared( createMatrix(numpy.random.uniform(low=-W_bound,high=W_bound, size=(dim, feature_map)).astype(theano.config.floatX), kGivens, prefix + '_convL_W_' + str(window) + '_' + str(i)) )
+        
+        Ws += [conv_W]
+        
+        params += [ conv_W ]
+        names += [ prefix + '_convL_W_' + str(window) + '_' + str(i) ]
+    
+    conv_b = theano.shared( createMatrix(numpy.zeros(feature_map, dtype=theano.config.floatX), kGivens, prefix + '_convL_b_' + str(window)) )
+    params += [ conv_b ]
+    names += [ prefix + '_convL_b_' + str(window) ]
+    
+    def recurrence(_x, i_m1, i_m2):
+        ati = T.dot(_x, Ws[0])
+        _m1 = T.maximum(i_m1, ati)
+        ati = i_m1 + T.dot(_x, Ws[1])
+        _m2 = T.maximum(i_m2, ati)
+        
+        return [_m1, _m2]
+    
+    ms, _ = theano.scan(fn=recurrence, sequences=[inpu], outputs_info=[T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map)], n_steps=inpu.shape[0])
+    
+    res = T.tanh(ms[1][-1] + conv_b[numpy.newaxis,:])
+    return res
+    
+def nonConsecutiveConvLayer3(inpu, feature_map, batch, length, dim, prefix, params, names, kGivens={}):
+    window = 3
+    fan_in = window * dim
+    fan_out = feature_map * window * dim / length #(length - window + 1)
+    W_bound = numpy.sqrt(6. / (fan_in + fan_out))
+    Ws = []
+    for i in range(window):
+        conv_W = theano.shared( createMatrix(numpy.random.uniform(low=-W_bound,high=W_bound, size=(dim, feature_map)).astype(theano.config.floatX), kGivens, prefix + '_convL_W_' + str(window) + '_' + str(i)) )
+        
+        Ws += [conv_W]
+        
+        params += [ conv_W ]
+        names += [ prefix + '_convL_W_' + str(window) + '_' + str(i) ]
+    
+    conv_b = theano.shared( createMatrix(numpy.zeros(feature_map, dtype=theano.config.floatX), kGivens, prefix + '_convL_b_' + str(window)) )
+    params += [ conv_b ]
+    names += [ prefix + '_convL_b_' + str(window) ]
+    
+    def recurrence(_x, i_m1, i_m2, i_m3):
+        ati = T.dot(_x, Ws[0])
+        _m1 = T.maximum(i_m1, ati)
+        ati = i_m1 + T.dot(_x, Ws[1])
+        _m2 = T.maximum(i_m2, ati)
+        ati = i_m2 + T.dot(_x, Ws[2])
+        _m3 = T.maximum(i_m3, ati)
+        
+        return [_m1, _m2, _m3]
+    
+    ms, _ = theano.scan(fn=recurrence, sequences=[inpu], outputs_info=[T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map)], n_steps=inpu.shape[0])
+    
+    res = T.tanh(ms[2][-1] + conv_b[numpy.newaxis,:])
+    return res
+    
+def nonConsecutiveConvLayer4(inpu, feature_map, batch, length, dim, prefix, params, names, kGivens={}):
+    window = 4
+    fan_in = window * dim
+    fan_out = feature_map * window * dim / length #(length - window + 1)
+    W_bound = numpy.sqrt(6. / (fan_in + fan_out))
+    Ws = []
+    for i in range(window):
+        conv_W = theano.shared( createMatrix(numpy.random.uniform(low=-W_bound,high=W_bound, size=(dim, feature_map)).astype(theano.config.floatX), kGivens, prefix + '_convL_W_' + str(window) + '_' + str(i)) )
+        
+        Ws += [conv_W]
+        
+        params += [ conv_W ]
+        names += [ prefix + '_convL_W_' + str(window) + '_' + str(i) ]
+    
+    conv_b = theano.shared( createMatrix(numpy.zeros(feature_map, dtype=theano.config.floatX), kGivens, prefix + '_convL_b_' + str(window)) )
+    params += [ conv_b ]
+    names += [ prefix + '_convL_b_' + str(window) ]
+    
+    def recurrence(_x, i_m1, i_m2, i_m3, i_m4):
+        ati = T.dot(_x, Ws[0])
+        _m1 = T.maximum(i_m1, ati)
+        ati = i_m1 + T.dot(_x, Ws[1])
+        _m2 = T.maximum(i_m2, ati)
+        ati = i_m2 + T.dot(_x, Ws[2])
+        _m3 = T.maximum(i_m3, ati)
+        ati = i_m3 + T.dot(_x, Ws[3])
+        _m4 = T.maximum(i_m4, ati)
+        
+        return [_m1, _m2, _m3, _m4]
+    
+    ms, _ = theano.scan(fn=recurrence, sequences=[inpu], outputs_info=[T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map)], n_steps=inpu.shape[0])
+    
+    res = T.tanh(ms[3][-1] + conv_b[numpy.newaxis,:])
+    return res
+    
+def nonConsecutiveConvLayer5(inpu, feature_map, batch, length, dim, prefix, params, names, kGivens={}):
+    window = 5
+    fan_in = window * dim
+    fan_out = feature_map * window * dim / length #(length - window + 1)
+    W_bound = numpy.sqrt(6. / (fan_in + fan_out))
+    Ws = []
+    for i in range(window):
+        conv_W = theano.shared( createMatrix(numpy.random.uniform(low=-W_bound,high=W_bound, size=(dim, feature_map)).astype(theano.config.floatX), kGivens, prefix + '_convL_W_' + str(window) + '_' + str(i)) )
+        
+        Ws += [conv_W]
+        
+        params += [ conv_W ]
+        names += [ prefix + '_convL_W_' + str(window) + '_' + str(i) ]
+    
+    conv_b = theano.shared( createMatrix(numpy.zeros(feature_map, dtype=theano.config.floatX), kGivens, prefix + '_convL_b_' + str(window)) )
+    params += [ conv_b ]
+    names += [ prefix + '_convL_b_' + str(window) ]
+    
+    def recurrence(_x, i_m1, i_m2, i_m3, i_m4, i_m5):
+        ati = T.dot(_x, Ws[0])
+        _m1 = T.maximum(i_m1, ati)
+        ati = i_m1 + T.dot(_x, Ws[1])
+        _m2 = T.maximum(i_m2, ati)
+        ati = i_m2 + T.dot(_x, Ws[2])
+        _m3 = T.maximum(i_m3, ati)
+        ati = i_m3 + T.dot(_x, Ws[3])
+        _m4 = T.maximum(i_m4, ati)
+        ati = i_m4 + T.dot(_x, Ws[4])
+        _m5 = T.maximum(i_m5, ati)
+        
+        return [_m1, _m2, _m3, _m4, _m5]
+    
+    ms, _ = theano.scan(fn=recurrence, sequences=[inpu], outputs_info=[T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map), T.alloc(0., batch, feature_map)], n_steps=inpu.shape[0])
+    
+    res = T.tanh(ms[4][-1] + conv_b[numpy.newaxis,:])
+    return res
+    
+def nonConsecutiveConvNet(inps, feature_map, convWins, batch, length, dim, prefix, params, names, kGivens={}):
+
+    cx = inps.dimshuffle(1,0,2)
+
+    fts = []
+    for i, convWin in enumerate(convWins):
+        fti = eval('nonConsecutiveConvLayer' + str(convWin))(cx, feature_map, batch, length, dim, prefix + '_nonCons_win' + str(i), params, names, kGivens=kGivens)
+        fts += [fti]
+
+    convRep = T.cast(T.concatenate(fts, axis=1), dtype=theano.config.floatX)
+
+    return convRep
+    
 #############################Multilayer NNs################################
 
 def HiddenLayer(inputs, nin, nout, params, names, prefix, kGivens={}):
@@ -799,6 +948,15 @@ def convolute(model):
     _x = getConcatenation(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], tranpose=False)
         
     fConv = convContext(_x, model.args['conv_feature_map'], model.args['conv_win_feature_map'], model.args['batch'], model.args['conv_winre'], model.container['dimIn'], 'convolute', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
+        
+    dim_conv = model.args['conv_feature_map'] * len(model.args['conv_win_feature_map'])
+    
+    return fConv, dim_conv
+    
+def nonConsecutiveConvolute(model):
+    _x = getConcatenation(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], tranpose=False)
+        
+    fConv = nonConsecutiveConvNet(_x, model.args['conv_feature_map'], model.args['conv_win_feature_map'], model.args['batch'], model.args['conv_winre'], model.container['dimIn'], 'nonConsecutiveConvolute', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
         
     dim_conv = model.args['conv_feature_map'] * len(model.args['conv_win_feature_map'])
     
