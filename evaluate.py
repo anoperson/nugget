@@ -85,7 +85,7 @@ def argsp():
 if __name__=='__main__':
     
     pars={'dataset_path' : '/misc/proteus108/thien/projects/fifth/eventNugget/nn/eligible0.win31.word2vec_nugget.pkl',
-          'model' : 'convolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv
+          'model' : 'convolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv, nonConsecutiveConvolute
           'wedWindow' : 2,
           'window' : 31,
           'expected_features' : OrderedDict([('anchor', 0),
