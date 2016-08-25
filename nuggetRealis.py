@@ -340,7 +340,7 @@ def writeout(corpus, predictions, probs, idMapping, wholeLineEventTypeRealisStor
             print 'document mismatch in writeout for realis: ', docOut, ' vs ', docMap
             exit()
         
-        out += '\t'.join(els)
+        out = '\t'.join(els)
         
         holder[docOut] += [out]
     
