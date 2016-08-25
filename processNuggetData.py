@@ -120,7 +120,7 @@ def build_data(srcDir, dataCorpus):
     
 def displayStats(mess, stats, idict):
     print '>>>>%s<<<<', mess
-    for v in stats:
+    for v in idict:
         print '#' + idict[v], ' : ', stats[v]
 
 def updateCounters(_data, inst, corpusCountIns, corpusCountTypes, corpusCountSubTypes, corpusCountRealis):
