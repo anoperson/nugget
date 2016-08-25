@@ -152,7 +152,7 @@ def make_data(revs, dictionaries, embeddings, features, window, eventTypePath):
                 ikey = datn + ' ' + doc + ' ' + str(instanceId)
                 
                 if ikey not in eventTypeStorer: continue
-                if rev['type'] == 0 or rev['subtype'] == 0 or rev['realis'] == -1:
+                if (datn != 'test') and (rev['type'] == 0 or rev['subtype'] == 0 or rev['realis'] == -1):
                     print 'should be an event istance here, but label from original data does not show that!'
                     exit()
                 
