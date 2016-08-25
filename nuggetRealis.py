@@ -440,7 +440,7 @@ def readAnnotationFile(afile):
             etype = st[0:st.find('_')]
             esubtype = st[(st.find('_')+1):]
             
-            realis = els[6]
+            realis = els[6].lower()
             
             typeRes[doc][span].add(etype) # += [etype]
             subtypeRes[doc][span].add(st) # += [st]
