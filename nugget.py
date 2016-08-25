@@ -590,7 +590,7 @@ def train(dataset_path='',
     else: reModel = eval('mainModel')(params)
     print 'done'
     
-    evaluatingDataset = OrderedDict([('train', datasets['train']),
+    evaluatingDataset = OrderedDict([#('train', datasets['train']),
                                      ('valid', datasets['valid']),
                                      ('test', datasets['test'])
                                      ])
