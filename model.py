@@ -961,6 +961,11 @@ def nonConsecutiveConvolute(model):
     dim_conv = model.args['conv_feature_map'] * len(model.args['conv_win_feature_map'])
     
     return fConv, dim_conv
+    
+def rnnHeadNonConsecutiveConv(model):
+    rep_noncon, dim_noncon = nonConsecutiveConvolute(model)
+    rep_rnn, dim_rnn = rnnHead(model)
+    return T.concatenate([rep_noncon, rep_rnn], axis=1), dim_noncon + dim_rnn
 ##
 def rnnHead(model):
     _x = gruBiDirect(model.container['embDict'], model.container['vars'], model.args['features'], model.args['features_dim'], model.container['dimIn'] , model.args['nh'], model.args['batch'], 'rnnHead', model.container['params'], model.container['names'], kGivens=model.args['kGivens'])
