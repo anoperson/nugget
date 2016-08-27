@@ -88,7 +88,7 @@ if __name__=='__main__':
     
     pars={'dataset_path' : '/misc/proteus108/thien/projects/fifth/eventNugget/nn/eligible0.win31.word2vec_nugget.pkl',
           'eventTypePath' : '',
-          'model' : 'convolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv, nonConsecutiveConvolute
+          'model' : 'nonConsecutiveConvolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv, nonConsecutiveConvolute, rnnHeadNonConsecutiveConv
           'wedWindow' : 2,
           'window' : 31,
           'expected_features' : OrderedDict([('anchor', 0),
@@ -111,10 +111,10 @@ if __name__=='__main__':
           'decay' : False,
           'batch' : 50,
           'binaryCutoff' : -1,
-          'multilayerNN1' : [],
-          'multilayerNN2' : [],
+          'multilayerNN1' : [600],
+          'multilayerNN2' : [300],
           'nhidden' : 300,
-          'conv_feature_map' : 150,
+          'conv_feature_map' : 300,
           'conv_win_feature_map' : [2,3,4,5],
           'seed' : 3435,
           'nepochs' : 20,
