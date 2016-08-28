@@ -201,7 +201,7 @@ def readEventTypeFile(eventTypePath):
     wholeLineEventTypeRealisStorer = {}
     print 'reading ids of instances with types for realis ...'
     for ccp in ccps:
-        with open(eventTypePath + '/' + ccp + '.txt') as f:
+        with open(eventTypePath + '/' + ccp + '.realis') as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith('#') or line.startswith('@'): continue
@@ -669,7 +669,7 @@ def train(dataset_path='',
     else: reModel = eval('mainModel')(params)
     print 'done'
     
-    evaluatingDataset = OrderedDict([('train', datasets['train']),
+    evaluatingDataset = OrderedDict([#('train', datasets['train']),
                                      ('valid', datasets['valid']),
                                      ('test', datasets['test'])
                                      ])
