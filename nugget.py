@@ -16,9 +16,15 @@ import theano.tensor.shared_randomstreams
 from model import *
 
 goldFiles = OrderedDict([('train', ''),
-                         ('valid', ''),
+                         ('valid', '/scratch/thn235/projects/nugget/golds/nugget/eval.tbf'),
                          ('test', '')
                         ])
+tokenFiles = OrderedDict([('train', ''),
+                          ('valid', '/scratch/thn235/projects/nugget/golds/nugget/tkn/'),
+                          ('test', '')
+                         ])
+
+scoreScript = '/scratch/thn235/projects/nugget/scorer/scorer_v1.7.py'
 subtype2typeMap = {"declarebankruptcy": "business",
 
                    "artifact": "manufacture",
@@ -66,6 +72,54 @@ subtype2typeMap = {"declarebankruptcy": "business",
                    "execute": "justice",
                    "arrestjail": "justice",
                    "acquit": "justice"}
+                   
+subtype2fullType = {"declarebankruptcy": "Business_Declare-Bankruptcy",
+
+                    "artifact": "Manufacture_Artifact",
+                   
+                    "startposition": "Personnel_Start-Position",
+                    "endposition": "Personnel_End-Position",
+                    "nominate": "Personnel_Nominate",
+                    "elect": "Personnel_Elect",
+                   
+                    "demonstrate": "Conflict_Demonstrate",
+                    "attack": "Conflict_Attack",
+                   
+                    "broadcast": "Contact_Broadcast",
+                    "contact": "Contact_Contact",
+                    "correspondence": "Contact_Correspondence",
+                    "meet": "Contact_Meet",
+                   
+                    "transfermoney": "Transaction_Transfer-Money",
+                    "transferownership": "Transaction_Transfer-Ownership",
+                    "transaction": "Transaction_Transaction",
+                   
+                    "transportartifact": "Movement_Transport-Artifact",
+                    "transportperson": "Movement_Transport-Person",
+                   
+                    "startorg": "Business_Start-Org",
+                    "endorg": "Business_End-Org",
+                    "mergeorg": "Business_Merge-Org",
+                   
+                    "die": "Life_Die",
+                    "divorce": "Life_Divorce",
+                    "marry": "Life_Marry",
+                    "beborn": "Life_Beborn",
+                    "injure": "Life_Injure",
+                   
+                    "pardon": "Justice_Pardon",
+                    "sue": "Justice_Sue",
+                    "convict": "Justice_Convict",
+                    "chargeindict": "Justice_Charge-Indict",
+                    "trialhearing": "Justice_Trial-Hearing",
+                    "sentence": "Justice_Sentence",
+                    "appeal": "Justice_Appeal",
+                    "releaseparole": "Justice_Release-Parole",
+                    "extradite": "Justice_Extradite",
+                    "fine": "Justice_Fine",
+                    "execute": "Justice_Execute",
+                    "arrestjail": "Justice_Arrest-Jail",
+                    "acquit": "Justice_Acquit"}
 
 ##################################################################
 
@@ -148,6 +202,9 @@ def make_data(revs, dictionaries, embeddings, features, window):
                 res[datn]['binaryFeatures'] += [rev['binaryFeatures']]
                 res[datn]['label'] += [rev['subtype']]
                 res[datn]['position'] += [rev['anchor']]
+                
+                res[datn]['wordStart'] += [rev['wordStart']]
+                res[datn]['wordEnd'] += [rev['wordEnd']]
                 
                 iid += 1
                 instanceId += 1
@@ -240,6 +297,108 @@ def predict(corpus, batch, reModel, idx2word, idx2label, features):
         probs_corpus = probs_corpus[0:-extra_data_num]
 
     return predictions_corpus, probs_corpus
+    
+#def writeout(corpus, predictions, probs, revs, idMapping, idx2word, idx2label, ofile):
+
+#    counter = -1
+#    holder = defaultdict(list)
+#    for id, pred, prob in zip(corpus['id'], predictions, probs):
+    
+#        if pred == 0: continue
+    
+#        counter += 1
+#        if id not in idMapping:
+#            print 'cannot find id : ', id , ' in mapping'
+#            exit()
+#        ikey = idMapping[id]
+#        keyls = ikey.split()
+#        doc = keyls[1]
+#        instanceId = int(keyls[2])
+        
+#        start = revs[doc]['instances'][instanceId]['wordStart']
+#        end = revs[doc]['instances'][instanceId]['wordEnd']
+#        anchor = revs[doc]['instances'][instanceId]['anchor']
+#        word = revs[doc]['instances'][instanceId]['word'][anchor]
+#        if pred not in idx2label:
+#            print 'cannot find prediction: ', pred, ' in idx2label'
+#            exit()
+#        subtype = idx2label[pred]
+#        if subtype not in subtype2typeMap:
+#            print 'cannot find subtype: ', subtype, ' in mapping'
+#            exit()
+#        type = subtype2typeMap[subtype]
+#        subTypeConfidence = numpy.max(prob)
+        
+#        out = 'NYU'
+#        out += '\t' + doc
+#        out += '\t' + 'E' + str(counter)
+#        out += '\t' + str(start) + ',' + str(end)
+#        out += '\t' + word
+#        out += '\t' + type + '_' + subtype
+#        out += '\t' + 'NONE'
+#        out += '\t' + '1.0'
+#        out += '\t' + str(subTypeConfidence)
+#        out += '\t' + '1.0'
+        
+#        out += '\t' + str(instanceId)
+        
+#        holder[doc] += [out]
+    
+#    writer = open(ofile, 'w')
+#    for doc in holder:
+#        writer.write('#BeginOfDocument ' + doc + '\n')
+#        for em in holder[doc]:
+#            writer.write(em + '\n')
+#        for i, em in enumerate(holder[doc]):
+#            id = em.split('\t')[2]
+#            writer.write('@Coreference' + '\t' + 'C' + str(i) + '\t' + id + '\n')
+#        writer.write('#EndOfDocument' + '\n')
+#    writer.close()
+
+#def myScore(goldFile, systemFile):
+    
+#    gType, gSubType = readAnnotationFile(goldFile)
+#    sType, sSubType = readAnnotationFile(systemFile)
+    
+#    totalSpan = 0
+#    for doc in gType: totalSpan += len(gType[doc])
+#    predictedSpan, correctSpan = 0, 0
+#    for doc in sType:
+#        predictedSpan += len(sType[doc])
+#        for span in sType[doc]:
+#            if doc in gType and span in gType[doc]: correctSpan += 1
+            
+#    spanP, spanR, spanF1 = getPerformance(totalSpan, predictedSpan, correctSpan)
+    
+#    totalType = 0
+#    for doc in gType:
+#        for span in gType[doc]:
+#            totalType += len(gType[doc][span])
+#    predictedType, correctType = 0, 0
+#    for doc in sType:
+#        predictedType += len(sType[doc])
+#        for span in sType[doc]:
+#            itype = next(iter(sType[doc][span])) #sType[doc][span][0]
+#            if doc in gType and span in gType[doc] and itype in gType[doc][span]:
+#                correctType += 1
+#    typeP, typeR, typeF1 = getPerformance(totalType, predictedType, correctType)
+    
+#    totalSubType = 0
+#    for doc in gSubType:
+#        for span in gSubType[doc]:
+#            totalSubType += len(gSubType[doc][span])
+#    predictedSubType, correctSubType = 0, 0
+#    for doc in sSubType:
+#        predictedSubType += len(sSubType[doc])
+#        for span in sSubType[doc]:
+#            isubtype = next(iter(sSubType[doc][span])) #sSubType[doc][span][0]
+#            if doc in gSubType and span in gSubType[doc] and isubtype in gSubType[doc][span]:
+#                correctSubType += 1
+#    subtypeP, subtypeR, subtypeF1 = getPerformance(totalSubType, predictedSubType, correctSubType)
+    
+#    return OrderedDict({'spanP' : spanP, 'spanR' : spanR, 'spanF1' : spanF1,
+#                        'typeP' : typeP, 'typeR' : typeR, 'typeF1' : typeF1,
+#                        'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1})
 
 def writeout(corpus, predictions, probs, revs, idMapping, idx2word, idx2label, ofile):
 
@@ -266,81 +425,68 @@ def writeout(corpus, predictions, probs, revs, idMapping, idx2word, idx2label, o
             print 'cannot find prediction: ', pred, ' in idx2label'
             exit()
         subtype = idx2label[pred]
-        if subtype not in subtype2typeMap:
-            print 'cannot find subtype: ', subtype, ' in mapping'
-            exit()
-        type = subtype2typeMap[subtype]
         subTypeConfidence = numpy.max(prob)
+        
+        if subtype not in subtype2fullType:
+            print 'cannot find subtype in subtype2fullType: ', subtype
         
         out = 'NYU'
         out += '\t' + doc
         out += '\t' + 'E' + str(counter)
         out += '\t' + str(start) + ',' + str(end)
         out += '\t' + word
-        out += '\t' + type + '_' + subtype
+        out += '\t' + subtype2fullType[subtype]
         out += '\t' + 'NONE'
         out += '\t' + '1.0'
         out += '\t' + str(subTypeConfidence)
         out += '\t' + '1.0'
         
-        out += '\t' + str(instanceId)
+        outId = out + '\t' + str(instanceId)
         
-        holder[doc] += [out]
+        holder[doc] += [(out, outId)]
     
     writer = open(ofile, 'w')
+    writerId = open(ofile + '.id', 'w')
     for doc in holder:
         writer.write('#BeginOfDocument ' + doc + '\n')
-        for em in holder[doc]:
+        writerId.write('#BeginOfDocument ' + doc + '\n')
+        for em, emid in holder[doc]:
             writer.write(em + '\n')
+            writerId.write(emid + '\n')
         for i, em in enumerate(holder[doc]):
-            id = em.split('\t')[2]
+            id = em[1].split('\t')[2]
             writer.write('@Coreference' + '\t' + 'C' + str(i) + '\t' + id + '\n')
+            writerId.write('@Coreference' + '\t' + 'C' + str(i) + '\t' + id + '\n')
         writer.write('#EndOfDocument' + '\n')
+        writerId.write('#EndOfDocument' + '\n')
     writer.close()
+    writerId.close()
 
-def myScore(goldFile, systemFile):
+def myScore(goldFile, systemFile, tokenFile):
+
+    proc = subprocess.Popen(["python", scoreScript, "-g", goldFile, "-s", systemFile, "-t", tokenFile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    ous, _ = proc.communicate()
     
-    gType, gSubType = readAnnotationFile(goldFile)
-    sType, sSubType = readAnnotationFile(systemFile)
-    
-    totalSpan = 0
-    for doc in gType: totalSpan += len(gType[doc])
-    predictedSpan, correctSpan = 0, 0
-    for doc in sType:
-        predictedSpan += len(sType[doc])
-        for span in sType[doc]:
-            if doc in gType and span in gType[doc]: correctSpan += 1
-            
-    spanP, spanR, spanF1 = getPerformance(totalSpan, predictedSpan, correctSpan)
-    
-    totalType = 0
-    for doc in gType:
-        for span in gType[doc]:
-            totalType += len(gType[doc][span])
-    predictedType, correctType = 0, 0
-    for doc in sType:
-        predictedType += len(sType[doc])
-        for span in sType[doc]:
-            itype = next(iter(sType[doc][span])) #sType[doc][span][0]
-            if doc in gType and span in gType[doc] and itype in gType[doc][span]:
-                correctType += 1
-    typeP, typeR, typeF1 = getPerformance(totalType, predictedType, correctType)
-    
-    totalSubType = 0
-    for doc in gSubType:
-        for span in gSubType[doc]:
-            totalSubType += len(gSubType[doc][span])
-    predictedSubType, correctSubType = 0, 0
-    for doc in sSubType:
-        predictedSubType += len(sSubType[doc])
-        for span in sSubType[doc]:
-            isubtype = next(iter(sSubType[doc][span])) #sSubType[doc][span][0]
-            if doc in gSubType and span in gSubType[doc] and isubtype in gSubType[doc][span]:
-                correctSubType += 1
-    subtypeP, subtypeR, subtypeF1 = getPerformance(totalSubType, predictedSubType, correctSubType)
+    spanP, spanR, spanF1 = 0.0, 0.0, 0.0
+    subtypeP, subtypeR, subtypeF1 = 0.0, 0.0, 0.0
+    startStoring = False
+    for line in ous.split('\n'):
+        line = line.strip()
+        if line == '=======Final Mention Detection Results=========':
+            startStoring = True
+            continue
+        if not startStoring: continue
+        if line.startswith('plain'):
+            els = line.split('\t')
+            spanP, spanR, spanF1 = float(els[1]), float(els[2]), float(els[3])
+            continue
+        if line.startswith('mention_type') and not line.startswith('mention_type+realis_status'):
+            els = line.split('\t')
+            subtypeP, subtypeR, subtypeF1 = float(els[1]), float(els[2]), float(els[3])
+            continue 
     
     return OrderedDict({'spanP' : spanP, 'spanR' : spanR, 'spanF1' : spanF1,
-                        'typeP' : typeP, 'typeR' : typeR, 'typeF1' : typeF1,
+                        'typeP' : subtypeP, 'typeR' : subtypeR, 'typeF1' : subtypeF1,
                         'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1})
 
 def getPerformance(total, predicted, correct):
@@ -371,7 +517,7 @@ def readAnnotationFile(afile):
 
 def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
         
-    def generateEvtSent(rid, sent, anchor, start, end, pred, idx2word, idx2label, idMapping):
+    def generateEvtSent(rid, sent, anchor, start, end, pred, golden, idx2word, idx2label, idMapping):
         res = idMapping[rid] + '\t'
         res += str(start) + ',' + str(end) + '\t'
         for i, w in enumerate(sent):
@@ -383,7 +529,12 @@ def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
                 res += w + ' '
         
         res = res.strip()
-        res += '\t' + idx2label[pred]
+        
+        prediction = idx2label[pred].lower()
+        golden = idx2label[golden].lower()
+              
+        res += '\t' + 'pred=' + prediction + '\t' + 'golden=' + golden
+        res += '\t' + ('__TRUE__' if prediction == golden else '__FALSE__')
         
         return res
     
@@ -399,8 +550,8 @@ def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
     fprobOut = open(address + '.prob', 'w')
     
 
-    for rid, sent, anchor, start, end, pred, pro in zip(corpus['id'], corpus['word'], corpus['position'], corpus['wordStart'], corpus['wordEnd'], predictions, probs):
-        fout.write(generateEvtSent(rid, sent, anchor, start, end, pred, idx2word, idx2label, idMapping) + '\n')
+    for rid, sent, anchor, start, end, pred, golden, pro in zip(corpus['id'], corpus['word'], corpus['position'], corpus['wordStart'], corpus['wordEnd'], predictions, corpus['label'], probs):
+        fout.write(generateEvtSent(rid, sent, anchor, start, end, pred, golden, idx2word, idx2label, idMapping) + '\n')
         fprobOut.write(generateProb(rid, pro, start, end, idx2label, idMapping) + '\n')
     
     fout.close()
@@ -448,7 +599,7 @@ def train(dataset_path='',
           
     if binaryCutoff > 0 and not model.startswith('#'): model = '#' + model
     
-    folder = './res/' + folder
+    folder = '/scratch/thn235/projects/nugget/res/' + folder
 
     paramFolder = folder + '/params'
 
@@ -648,16 +799,18 @@ def train(dataset_path='',
             _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features)
             
             writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], revs[elu], idMappings[elu], idx2word, idx2label, folder + '/' + elu + '.pred' + str(e))
-            _perfs[elu] = myScore(goldFiles[elu], folder + '/' + elu + '.pred' + str(e))
+            
+            if goldFiles[elu] and tokenFiles[elu]:
+                _perfs[elu] = myScore(goldFiles[elu], folder + '/' + elu + '.pred' + str(e), tokenFiles[elu])
         
         perPrint(_perfs)
         
         print 'saving parameters ...'
         reModel.save(paramFileName + str(e) + '.pkl')
         
-        #print 'saving output ...'
-        #for elu in evaluatingDataset:
-        #    saving(evaluatingDataset[elu], _predictions[elu], _probs[elu], idx2word, idx2label, idMappings[elu], folder + '/' + elu + str(e) + '.fullPred')
+        print 'saving output ...'
+        for elu in evaluatingDataset:
+            saving(evaluatingDataset[elu], _predictions[elu], _probs[elu], idx2word, idx2label, idMappings[elu], folder + '/' + elu + str(e) + '.out')
         
         if _perfs['valid']['subtypeF1'] > best_f1:
             #rnn.save(folder)
@@ -666,7 +819,7 @@ def train(dataset_path='',
             if verbose:
                 perPrint(_perfs, len('Current Performance')*'-')
 
-            for elu in evaluatingDataset:
+            for elu in _perfs:
                 s[elu] = _perfs[elu]
             s['_be'] = e
             
@@ -687,9 +840,9 @@ def perPrint(perfs, mess='Current Performance'):
     for elu in perfs:
         if elu.startswith('_'): continue
         print '----', elu
-        print str(perfs[elu]['spanP']) + '\t' + str(perfs[elu]['spanR']) + '\t' + str(perfs[elu]['spanF1'])
-        print str(perfs[elu]['typeP']) + '\t' + str(perfs[elu]['typeR']) + '\t' + str(perfs[elu]['typeF1'])
-        print str(perfs[elu]['subtypeP']) + '\t' + str(perfs[elu]['subtypeR']) + '\t' + str(perfs[elu]['subtypeF1'])
+        print 'plain: ', str(perfs[elu]['spanP']) + '\t' + str(perfs[elu]['spanR']) + '\t' + str(perfs[elu]['spanF1'])
+        print 'mention_type: ', str(perfs[elu]['typeP']) + '\t' + str(perfs[elu]['typeR']) + '\t' + str(perfs[elu]['typeF1'])
+        print 'mention_subtype: ', str(perfs[elu]['subtypeP']) + '\t' + str(perfs[elu]['subtypeR']) + '\t' + str(perfs[elu]['subtypeF1'])
     
     print '------------------------------------------------------------------------------'
 

@@ -429,5 +429,5 @@ if __name__=="__main__":
         print 'size of ', di, ': ', len(mpdict[di])
     
     print 'dumping ...'
-    cPickle.dump([revs, embeddings, mpdict], open('eligible' + ('1.' if useEligible else '0.') + 'win' + str(window) + '.' + embType + "_nugget.pkl", "wb"))
+    cPickle.dump([revs, embeddings, mpdict], open('/scratch/thn235/projects/nugget/' + 'eligible' + ('1.' if useEligible else '0.') + 'win' + str(window) + '.' + embType + "_nugget.pkl", "wb"))
     print "dataset created!"   

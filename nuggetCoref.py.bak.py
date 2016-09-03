@@ -13,18 +13,19 @@ from collections import OrderedDict, defaultdict
 from theano.tensor.nnet import conv
 from theano.tensor.signal import downsample
 import theano.tensor.shared_randomstreams
-from model import *
+from modelCoref import *
 
 goldFiles = OrderedDict([('train', ''),
-                         ('valid', '/scratch/thn235/projects/nugget/golds/nugget/eval.tbf'),
+                         ('valid', '/scratch/thn235/projects/nugget/golds/hopper/eval.tbf'),
                          ('test', '')
                         ])
 tokenFiles = OrderedDict([('train', ''),
-                          ('valid', '/scratch/thn235/projects/nugget/golds/nugget/tkn/'),
+                          ('valid', '/scratch/thn235/projects/nugget/golds/hopper/tkn/'),
                           ('test', '')
                          ])
 
 scoreScript = '/scratch/thn235/projects/nugget/scorer/scorer_v1.7.py'
+conllTempFile = '/scratch/thn235/projects/nugget/scorer/conllTempFile_Coreference.txt'
 subtype2typeMap = {"declarebankruptcy": "business",
 
                    "artifact": "manufacture",
@@ -72,10 +73,6 @@ subtype2typeMap = {"declarebankruptcy": "business",
                    "execute": "justice",
                    "arrestjail": "justice",
                    "acquit": "justice"}
-
-realisMap = {'other' : 'Other',
-             'actual' : 'Actual',
-             'generic' : 'Generic'}
 
 ##################################################################
 
@@ -130,7 +127,7 @@ def generateDataInstance(rev, dictionaries, embeddings, features, window):
     
     return res
 
-def make_data(revs, dictionaries, embeddings, features, window, eventTypePath):
+def make_data(revs, dictionaries, embeddings, features1, features2, window, eventTypePath):
 
     mLen = -1
     for datn in revs:
@@ -146,49 +143,91 @@ def make_data(revs, dictionaries, embeddings, features, window, eventTypePath):
     subtypeDict = dict((k,v) for v,k in dictionaries['subtype'].iteritems())
     realisDict = dict((k,v) for v,k in dictionaries['realis'].iteritems())
     
-    eventTypeStorer, realisStorer, wholeLineEventTypeRealisStorer = readEventTypeFile(eventTypePath)
+    eventTypeStorer, realisStorer, wholeLineEventTypeRealisStorer, eventIdStorer, corefChainStorer = readEventTypeFile(eventTypePath)
     
     res = {}
     idMappings = {}
+    coutPositive = 0
     for datn in revs:
         res[datn] = defaultdict(list)
         idMappings[datn] = {}
         iid = -1
         for doc in revs[datn]:
-            instanceId = -1
-            for rev in revs[datn][doc]['instances']:
+            for instanceId1 in range(len(revs[datn][doc]['instances'])):
             
-                instanceId += 1
-                ikey = datn + ' ' + doc + ' ' + str(instanceId)
+                rev1 = revs[datn][doc]['instances'][instanceId1]
+                ikey1 = datn + ' ' + doc + ' ' + str(instanceId1)
                 
-                if ikey not in eventTypeStorer: continue
-                if (datn == 'train') and (rev['type'] == 0 or rev['subtype'] == 0 or rev['realis'] == -1):
-                    print 'should be an event istance here, but label from original data does not show that!'
+                if ikey1 not in eventTypeStorer: continue
+                if (datn == 'train') and (rev1['type'] == 0 or rev1['subtype'] == 0 or rev1['realis'] == -1):
+                    print 'should be an event istance 1 here, but label from original data does not show that!'
+                    exit()
+                    
+                if datn == 'train' and realisDict[rev1['realis']] != realisStorer[ikey1]:
+                    print 'realis1 mismatched in make data: ', datn, realisDict[rev1['realis']], ' vs ', realisStorer[ikey1]
                     exit()
                 
-                fetType, fetSubtype = parseTypeSubType(eventTypeStorer[ikey], rev, datn, typeDict, subtypeDict)
+                fetType1, fetSubtype1 = parseTypeSubType(eventTypeStorer[ikey1], rev1, datn, typeDict, subtypeDict)
             
-                ists = generateDataInstance(rev, dictionaries, embeddings, features, window)
+                ists1 = generateDataInstance(rev1, dictionaries, embeddings, features1, window)
                 
-                for kk in ists: res[datn][kk] += [ists[kk]]
+                eventId1 = rev1['eventId']
+                sentId1 = rev1['sentenceId']
+                realis1 = realisStorer[ikey1]
                 
-                stFeatures = ['EventType=' + fetType, 'EventSubType=' + fetSubtype]
-                res[datn]['binaryFeatures'] += [rev['binaryFeatures'] + stFeatures]
+                for instanceId2 in range(instanceId1+1, len(revs[datn][doc]['instances'])):
+                    
+                    rev2 = revs[datn][doc]['instances'][instanceId2]
+                    ikey2 = datn + ' ' + doc + ' ' + str(instanceId2)
+                    
+                    if ikey2 not in eventTypeStorer: continue
+                    if (datn == 'train') and (rev2['type'] == 0 or rev2['subtype'] == 0 or rev2['realis'] == -1):
+                        print 'should be an event istance 2 here, but label from original data does not show that!'
+                        exit()
+                    
+                    if datn == 'train' and realisDict[rev2['realis']] != realisStorer[ikey2]:
+                        print 'realis2 mismatched in make data: ', datn, realisDict[rev2['realis']], ' vs ', realisStorer[ikey2]
+                        exit()
+                        
+                    fetType2, fetSubtype2 = parseTypeSubType(eventTypeStorer[ikey2], rev2, datn, typeDict, subtypeDict)
+            
+                    ists2 = generateDataInstance(rev2, dictionaries, embeddings, features2, window)
+                    
+                    eventId2 = rev2['eventId']
+                    sentId2 = rev2['sentenceId']
+                    realis2 = realisStorer[ikey2]
+                    
+                    #coreference features
+                    typeMatch = 'TypeMatch=' + ('true' if fetType1 == fetType2 else 'false')
+                    subtypeMatch = 'SubTypeMatch=' + ('true' if fetSubtype1 == fetSubtype2 else 'false')
+                    realisMatch = 'RealisMatch=' + ('true' if realis1 == realis2 else 'false')
+                    sentDistance = 'SentDist=' + (str(sentId1-sentId2) if sentId1 > sentId2 else str(sentId2-sentId1))
                 
-                res[datn]['position'] += [rev['anchor']]
+                    coreferenceFeatures = [typeMatch, subtypeMatch, realisMatch, sentDistance]
+                    ######
                 
-                res[datn]['wordStart'] += [rev['wordStart']]
-                res[datn]['wordEnd'] += [rev['wordEnd']]
+                    for kk in ists1: res[datn][kk + '1'] += [ists1[kk]]
+                    for kk in ists2: res[datn][kk + '2'] += [ists2[kk]]
+                    
+                    res[datn]['binaryFeatures1'] += [rev1['binaryFeatures']]
+                    res[datn]['binaryFeatures2'] += [rev2['binaryFeatures']]
+                    
+                    res[datn]['position1'] += [rev1['anchor']]
+                    res[datn]['position2'] += [rev2['anchor']]
+                    
+                    res[datn]['coreferenceFeatures'] += [coreferenceFeatures]
+                    
+                    coreferenceLabel = 0
+                    corefKey = datn + ' ' + doc
+                    if corefKey in corefChainStorer and ((eventId1 + ' ' + eventId2) in corefChainStorer[corefKey] or (eventId2 + ' ' + eventId1) in corefChainStorer[corefKey]):
+                        coreferenceLabel = 1
+                        coutPositive += 1
+                    res[datn]['label'] += [coreferenceLabel if datn != 'test' else -1]
                 
-                if datn == 'train' and realisDict[rev['realis']] != realisStorer[ikey]:
-                    print 'realis mismatched in make data: ', datn, realisDict[rev['realis']], ' vs ', realisStorer[ikey]
-                    exit()
-                res[datn]['label'] += [rev['realis'] if datn != 'test' else -1]
                 
-                
-                iid += 1
-                idMappings[datn][iid] = ikey
-                res[datn]['id'] += [iid]
+                    iid += 1
+                    idMappings[datn][iid] = ikey1 + '\t' + ikey2 + '\t' + eventId1 + '\t' + eventId2
+                    res[datn]['id'] += [iid]
     
     return res, idMappings, wholeLineEventTypeRealisStorer
     
@@ -211,19 +250,39 @@ def readEventTypeFile(eventTypePath):
     ccps = ['train', 'test', 'valid']
     eventTypeStorer = {}
     realisStorer = {}
-    wholeLineEventTypeRealisStorer = {}
+    wholeLineEventTypeRealisStorer = OrderedDict()
+    eventIdStorer = {}
+    corefChainStorer = defaultdict(set)
     print 'reading ids of instances with types for realis ...'
+    currentDoc = ''
     for ccp in ccps:
-        with open(eventTypePath + '/' + ccp + '.realis') as f:
+        if ccp not in wholeLineEventTypeRealisStorer:
+            wholeLineEventTypeRealisStorer[ccp] = OrderedDict()
+        with open(eventTypePath + '/' + ccp + '.coref') as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith('#') or line.startswith('@'): continue
-            
+                if not line or line.startswith('#'): continue
+                
                 els = line.split('\t')
+                
+                if line.startswith('@'):
+                    corefKey = ccp + ' ' + currentDoc
+                    corefChain = els[2].split(',')
+                    for cc1 in corefChain:
+                        for cc2 in corefChain:
+                            if cc2 != cc1: continue
+                            corefChainStorer[corefKey].add(cc1 + ' ' + cc2)
+                            corefChainStorer[corefKey].add(cc2 + ' ' + cc1)
+                    continue
+                    
                 doc = els[1]
+                
+                currentDoc = doc
+                
+                evid = els[2]
             
                 #span = els[3]
-                st = els[5] #.replace('-', '').lower()
+                st = els[5].replace('-', '').lower()
                 
                 reli = els[6]
                 
@@ -233,16 +292,20 @@ def readEventTypeFile(eventTypePath):
                 
                 eventTypeStorer[key] = st
                 realisStorer[key] = reli
-                wholeLineEventTypeRealisStorer[key] = line
+                eventIdStorer[key] = evid
+                
+                if doc not in wholeLineEventTypeRealisStorer[ccp]: 
+                    wholeLineEventTypeRealisStorer[ccp][doc] = []
+                wholeLineEventTypeRealisStorer[ccp][doc] += [line]
             
-    return eventTypeStorer, realisStorer, wholeLineEventTypeRealisStorer
+    return eventTypeStorer, realisStorer, wholeLineEventTypeRealisStorer, eventIdStorer, corefChainStorer
 
 def makeBinaryDictionary(dat, cutoff=1):
     if cutoff < 0: return None
     print '-------creating binary feature dictionary on the training data--------'
     
     bfdCounter = defaultdict(int)
-    for rev in dat['binaryFeatures']:
+    for rev in dat['binaryFeatures1']:
         for fet in rev: bfdCounter[fet] += 1
     print 'binary feature cutoff: ', cutoff
     bfd = {}
@@ -250,7 +313,24 @@ def makeBinaryDictionary(dat, cutoff=1):
         if bfdCounter[fet] >= cutoff:
             if fet not in bfd: bfd[fet] = len(bfd)
     
-    print 'size of dictionary: ', len(bfd)
+    print 'size of binary feature dictionary: ', len(bfd)
+    
+    return bfd
+    
+def makeCoreferenceFeatureDictionary(dat, cutoff=1):
+    if cutoff < 0: return None
+    print '-------creating coreference feature dictionary on the training data--------'
+    
+    bfdCounter = defaultdict(int)
+    for rev in dat['coreferenceFeatures']:
+        for fet in rev: bfdCounter[fet] += 1
+    print 'coreference feature cutoff: ', cutoff
+    bfd = {}
+    for fet in bfdCounter:
+        if bfdCounter[fet] >= cutoff:
+            if fet not in bfd: bfd[fet] = len(bfd)
+    
+    print 'size of coreference feature dictionary: ', len(bfd)
     
     return bfd
 
@@ -258,7 +338,9 @@ def findMaximumBinaryLength(dats):
     
     maxBiLen = -1
     for corpus in dats:
-        for rev in dats[corpus]['binaryFeatures']:
+        for rev in dats[corpus]['binaryFeatures1']:
+            if len(rev) > maxBiLen: maxBiLen = len(rev)
+        for rev in dats[corpus]['binaryFeatures2']:
             if len(rev) > maxBiLen: maxBiLen = len(rev)
     print 'maximum number of binary features: ', maxBiLen
     
@@ -266,12 +348,15 @@ def findMaximumBinaryLength(dats):
 
 def convertBinaryFeatures(dat, maxBiLen, bfd):
     if not bfd:
-        for corpus in dat: del dat[corpus]['binaryFeatures']
+        for corpus in dat:
+            del dat[corpus]['binaryFeatures1']
+            del dat[corpus]['binaryFeatures2']
         return -1
     print 'converting binary features to vectors ...'
     for corpus in dat:
-        for i in range(len(dat[corpus]['word'])):
-            dat[corpus]['binaryFeatures'][i] = getBinaryVector(dat[corpus]['binaryFeatures'][i], maxBiLen, bfd)
+        for i in range(len(dat[corpus]['word1'])):
+            dat[corpus]['binaryFeatures1'][i] = getBinaryVector(dat[corpus]['binaryFeatures1'][i], maxBiLen, bfd)
+            dat[corpus]['binaryFeatures2'][i] = getBinaryVector(dat[corpus]['binaryFeatures2'][i], maxBiLen, bfd)
             
     return len(bfd)
 
@@ -285,11 +370,30 @@ def getBinaryVector(fets, maxBiLen, dic):
             
     res[0] = id
     return res
+    
+def convertCoreferenceFeatures(dat, bfd):
+    if not bfd:
+        for corpus in dat:
+            del dat[corpus]['coreferenceFeatures']
+        return -1
+    print 'converting coreference features to vectors ...'
+    for corpus in dat:
+        for i in range(len(dat[corpus]['word1'])):
+            dat[corpus]['coreferenceFeatures'][i] = getCoreferenceFeatureVector(dat[corpus]['coreferenceFeatures'][i], bfd)
+            
+    return len(bfd)
+    
+def getCoreferenceFeatureVector(fets, dic):
+    res = [0.0] * len(dic)
+    for fet in fets:
+        if fet in dic:
+            res[dic[fet]] = 1.0
+    return res
 
-def predict(corpus, batch, reModel, idx2word, idx2label, features):
+def predict(corpus, batch, reModel, idx2word, features1, features2):
     evaluateCorpus = {}
     extra_data_num = -1
-    nsen = corpus['word'].shape[0]
+    nsen = corpus['word1'].shape[0]
     if nsen % batch > 0:
         extra_data_num = batch - nsen % batch
         for ed in corpus:  
@@ -299,15 +403,19 @@ def predict(corpus, batch, reModel, idx2word, idx2label, features):
         for ed in corpus: 
             evaluateCorpus[ed] = corpus[ed]
         
-    numBatch = evaluateCorpus['word'].shape[0] / batch
+    numBatch = evaluateCorpus['word1'].shape[0] / batch
     predictions_corpus = numpy.array([], dtype='int32')
     probs_corpus = []
     for i in range(numBatch):
-        zippedCorpus = [ evaluateCorpus[ed][i*batch:(i+1)*batch] for ed in features if features[ed] >= 0 ]
-        zippedCorpus += [ evaluateCorpus['position'][i*batch:(i+1)*batch] ]
+        zippedCorpus = [ evaluateCorpus[ed + '1'][i*batch:(i+1)*batch] for ed in features1 if features1[ed] >= 0 ] + [ evaluateCorpus[ed + '2'][i*batch:(i+1)*batch] for ed in features2 if features2[ed] >= 0 ]
+        zippedCorpus += [ evaluateCorpus['position1'][i*batch:(i+1)*batch], evaluateCorpus['position2'][i*batch:(i+1)*batch] ]
         
-        if 'binaryFeatures' in evaluateCorpus:
-            zippedCorpus += [ evaluateCorpus['binaryFeatures'][i*batch:(i+1)*batch] ]
+        if 'coreferenceFeatures' in evaluateCorpus:
+            zippedData += [evaluateCorpus['coreferenceFeatures'][i*batch:(i+1)*batch]]
+        
+        if 'binaryFeatures1' in evaluateCorpus:
+            zippedCorpus += [ evaluateCorpus['binaryFeatures1'][i*batch:(i+1)*batch] ]
+            zippedCorpus += [ evaluateCorpus['binaryFeatures2'][i*batch:(i+1)*batch] ]
         
         clas, probs = reModel.classify(*zippedCorpus)
         predictions_corpus = numpy.append(predictions_corpus, clas)
@@ -321,281 +429,154 @@ def predict(corpus, batch, reModel, idx2word, idx2label, features):
 
     return predictions_corpus, probs_corpus
 
-#def writeout(corpus, predictions, probs, idMapping, wholeLineEventTypeRealisStorer, idx2label, ofile):
+def cluster(corpus, predictions, idMapping):
 
-#    holder = defaultdict(list)
-#    for id, pred, prob in zip(corpus['id'], predictions, probs):
-    
-#        if id not in idMapping:
-#            print 'cannot find id : ', id , ' in mapping'
-#            exit()
-#        ikey = idMapping[id]
-#        docMap = ikey.split()[1]
+    tclusters = defaultdict(dict)
+    tidclusters = defaultdict(int)
+    for id, pred in zip(corpus['id'], predictions):
+        if pred == 0: continue
         
-#        if ikey not in wholeLineEventTypeRealisStorer:
-#            print 'cannot find key: ', key, ' in wholeLineEventTypeRealisStorer. It should be there as we only consider detected event instances now.'
-#            exit()
-        
-#        line = wholeLineEventTypeRealisStorer[ikey]
-        
-#        if pred not in idx2label:
-#            print 'cannot find realis prediction: ', pred, ' in idx2label'
-#            exit()
-#        realis = idx2label[pred]
-#        realisConfidence = numpy.max(prob)
-        
-#        els = line.split('\t')
-#        els[6] = realis
-#        els[9] = str(realisConfidence)
-        
-#        docOut = els[1]
-#        if docOut != docMap:
-#            print 'document mismatch in writeout for realis: ', docOut, ' vs ', docMap
-#            exit()
-        
-#        out = '\t'.join(els)
-        
-#        holder[docOut] += [out]
-    
-#    writer = open(ofile, 'w')
-#    for doc in holder:
-#        writer.write('#BeginOfDocument ' + doc + '\n')
-#        for em in holder[doc]:
-#            writer.write(em + '\n')
-#        for i, em in enumerate(holder[doc]):
-#            id = em.split('\t')[2]
-#            writer.write('@Coreference' + '\t' + 'C' + str(i) + '\t' + id + '\n')
-#        writer.write('#EndOfDocument' + '\n')
-#    writer.close()
-
-#def myScore(goldFile, systemFile):
-    
-#    gType, gSubType, gRealis = readAnnotationFile(goldFile)
-#    sType, sSubType, sRealis = readAnnotationFile(systemFile)
-    
-#    totalSpan = 0
-#    for doc in gType: totalSpan += len(gType[doc])
-#    predictedSpan, correctSpan = 0, 0
-#    for doc in sType:
-#        predictedSpan += len(sType[doc])
-#        for span in sType[doc]:
-#            if doc in gType and span in gType[doc]: correctSpan += 1
-            
-#    spanP, spanR, spanF1 = getPerformance(totalSpan, predictedSpan, correctSpan)
-    
-#    totalType = 0
-#    for doc in gType:
-#        for span in gType[doc]:
-#            totalType += len(gType[doc][span])
-#    predictedType, correctType = 0, 0
-#    for doc in sType:
-#        predictedType += len(sType[doc])
-#        for span in sType[doc]:
-#            itype = next(iter(sType[doc][span])) #sType[doc][span][0]
-#            if doc in gType and span in gType[doc] and itype in gType[doc][span]:
-#                correctType += 1
-#    typeP, typeR, typeF1 = getPerformance(totalType, predictedType, correctType)
-    
-#    totalSubType = 0
-#    for doc in gSubType:
-#        for span in gSubType[doc]:
-#            totalSubType += len(gSubType[doc][span])
-#    predictedSubType, correctSubType = 0, 0
-#    for doc in sSubType:
-#        predictedSubType += len(sSubType[doc])
-#        for span in sSubType[doc]:
-#            isubtype = next(iter(sSubType[doc][span])) #sSubType[doc][span][0]
-#            if doc in gSubType and span in gSubType[doc] and isubtype in gSubType[doc][span]:
-#                correctSubType += 1
-#    subtypeP, subtypeR, subtypeF1 = getPerformance(totalSubType, predictedSubType, correctSubType)
-    
-#    totalRealis = 0
-#    for doc in gRealis:
-#        for span in gRealis[doc]:
-#            totalRealis += len(gRealis[doc][span])
-#    predictedRealis, correctRealis = 0, 0
-#    for doc in sRealis:
-#        predictedRealis += len(sSubType[doc])
-#        for span in sRealis[doc]:
-#            irealis = next(iter(sRealis[doc][span])) #sRealis[doc][span][0]
-#            if doc not in sSubType or span not in sSubType[doc]: continue
-#            isubtype = next(iter(sSubType[doc][span])) #sSubType[doc][span][0]
-#            if doc in gRealis and span in gRealis[doc] and doc in gSubType and span in gSubType[doc] and isubtype in gSubType[doc][span] and irealis in gRealis[doc][span]:
-#                correctRealis += 1
-#    realisP, realisR, realisF1 = getPerformance(totalRealis, predictedRealis, correctRealis)
-    
-    
-#    return OrderedDict({'spanP' : spanP, 'spanR' : spanR, 'spanF1' : spanF1,
-#                        'typeP' : typeP, 'typeR' : typeR, 'typeF1' : typeF1,
-#                        'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1,
-#                        'realisP' : realisP, 'realisR' : realisR, 'realisF1' : realisF1})
-
-def writeout(corpus, predictions, probs, idMapping, wholeLineEventTypeRealisStorer, idx2label, ofile):
-
-    holder = defaultdict(list)
-    for id, pred, prob in zip(corpus['id'], predictions, probs):
-    
         if id not in idMapping:
             print 'cannot find id : ', id , ' in mapping'
             exit()
-        ikey = idMapping[id]
-        docMap = ikey.split()[1]
+        keys = idMapping[id].split('\t')
+        ikey1, ikey2, evid1, evid2 = keys[0].split(), keys[1].split(), keys[2], keys[3]
         
-        if ikey not in wholeLineEventTypeRealisStorer:
-            print 'cannot find key: ', key, ' in wholeLineEventTypeRealisStorer. It should be there as we only consider detected event instances now.'
+        ccp1 = ikey1[0]
+        ccp2 = ikey2[0]
+        if ccp1 != ccp2:
+            print 'copurs mismatch in clustering: ', ccp1, ccp2
             exit()
+        ccp = ccp1
         
-        line = wholeLineEventTypeRealisStorer[ikey]
-        
-        if pred not in idx2label:
-            print 'cannot find realis prediction: ', pred, ' in idx2label'
+        doc1 = ikey1[1]
+        doc2 = ikey2[1]
+        if doc1 != doc2:
+            print 'document mismatch in clustering: ', doc1, doc2
             exit()
-        realis = idx2label[pred]
-        if realis not in realisMap:
-            print 'cannot find realis in realisMap: ', realis
-            exit()
-        realisConfidence = numpy.max(prob)
+        doc = doc1
         
-        els = line.split('\t')
-        els[6] = realisMap[realis]
-        els[9] = str(realisConfidence)
+        if evid1 not in tclusters[doc] and evid2 not in tclusters[doc]:
+            cuid = tidclusters[doc]
+            tclusters[doc][evid1] = cuid
+            tclusters[doc][evid2] = cuid
+            tidclusters[doc] += 1
+            continue
+        if evid1 in tclusters[doc] and evid2 not in tclusters[doc]:
+            tclusters[doc][evid2] = tclusters[doc][evid1]
+            continue
+        if evid1 not in tclusters[doc] and evid2 in tclusters[doc]:
+            tclusters[doc][evid1] = tclusters[doc][evid2]
+            continue
         
-        docOut = els[1]
-        if docOut != docMap:
-            print 'document mismatch in writeout for realis: ', docOut, ' vs ', docMap
-            exit()
-        
-        outId = '\t'.join(els)
-        out = '\t'.join(els[0:-1])
-        
-        holder[docOut] += [(out, outId)]
+        cuid1 = tclusters[doc][evid1]
+        cuid2 = tclusters[doc][evid2]
+        for evid in tclusters[doc]:
+            if tclusters[doc][evid] == cuid2: tclusters[doc][evid] = cuid1
+    
+    clusters = defaultdict(lambda : defaultdict(set))
+    for doc in tclusters:
+        for evid in tclusters[doc]:
+            clusters[doc][tclusters[doc][evid]].add(evid)
+    
+    return clusters    
+
+def writeout(corpus, predictions, probs, idMapping, wholeLineEventTypeRealisStorerCP, ofile):
+
+    clusters = cluster(corpus, predictions, idMapping)
     
     writer = open(ofile, 'w')
-    writerId = open(ofile + '.id', 'w')
-    for doc in holder:
+    for doc in wholeLineEventTypeRealisStorerCP:
         writer.write('#BeginOfDocument ' + doc + '\n')
-        writerId.write('#BeginOfDocument ' + doc + '\n')
-        for em, emid in holder[doc]:
-            writer.write(em + '\n')
-            writerId.write(emid + '\n')
-        for i, em in enumerate(holder[doc]):
-            id = em[1].split('\t')[2]
-            writer.write('@Coreference' + '\t' + 'C' + str(i) + '\t' + id + '\n')
-            writerId.write('@Coreference' + '\t' + 'C' + str(i) + '\t' + id + '\n')
+        for em in wholeLineEventTypeRealisStorerCP[doc]:
+            em = em.split('\t')[0:-1]
+            writer.write('\t'.join(em) + '\n')
+        if doc in clusters:
+            cuid = 0
+            for ocid in clusters[doc]:
+                oneCluster = list(clusters[doc][ocid])
+                writer.write('@Coreference' + '\t' + 'C' + str(cuid) + '\t' + ','.join(oneCluster) + '\n')
+                cuid += 1
         writer.write('#EndOfDocument' + '\n')
-        writerId.write('#EndOfDocument' + '\n')
     writer.close()
-    writerId.close()
 
-def myScore(goldFile, systemFile, tokenFile):
+def myScore(goldFile, systemFile, tokenFile, conllTempFile):
 
-    proc = subprocess.Popen(["python", scoreScript, "-g", goldFile, "-s", systemFile, "-t", tokenFile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    proc = subprocess.Popen(["python", scoreScript, "-g", goldFile, "-s", systemFile, "-t", tokenFile, "-c", conllTempFile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     ous, _ = proc.communicate()
     
     spanP, spanR, spanF1 = 0.0, 0.0, 0.0
     subtypeP, subtypeR, subtypeF1 = 0.0, 0.0, 0.0
     realisP, realisR, realisF1 = 0.0, 0.0, 0.0
     realisAndTypeP, realisAndTypeR, realisAndTypeF1 = 0.0, 0.0, 0.0
-    startStoring = False
+    bcub, ceafe, ceafm, muc, blanc, averageCoref = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    startMentionScoring = False
+    startCoreferenceScoring = False
     for line in ous.split('\n'):
         line = line.strip()
         if line == '=======Final Mention Detection Results=========':
-            startStoring = True
+            startMentionScoring = True
+            startCoreferenceScoring = False
             continue
-        if not startStoring: continue
-        if line.startswith('plain'):
+        if line == '=======Final Mention Coreference Results=========':
+            startMentionScoring = False
+            startCoreferenceScoring = True
+            continue
+        if not startMentionScoring and not startCoreferenceScoring: continue
+        if startMentionScoring and line.startswith('plain'):
             els = line.split('\t')
             spanP, spanR, spanF1 = float(els[1]), float(els[2]), float(els[3])
             continue
-        if line.startswith('mention_type') and not line.startswith('mention_type+realis_status'):
+        if startMentionScoring and line.startswith('mention_type') and not line.startswith('mention_type+realis_status'):
             els = line.split('\t')
             subtypeP, subtypeR, subtypeF1 = float(els[1]), float(els[2]), float(els[3])
             continue
-        if line.startswith('realis_status'):
+        if startMentionScoring and line.startswith('realis_status'):
             els = line.split('\t')
             realisP, realisR, realisF1 = float(els[1]), float(els[2]), float(els[3])
             continue
-        if line.startswith('mention_type+realis_status'):
+        if startMentionScoring and line.startswith('mention_type+realis_status'):
             els = line.split('\t')
             realisAndTypeP, realisAndTypeR, realisAndTypeF1 = float(els[1]), float(els[2]), float(els[3])
-            continue    
+            continue
+        if startCoreferenceScoring and 'bcub' in line:
+            els = line.split()
+            bcub = float(els[4])
+            continue
+        if startCoreferenceScoring and 'ceafe' in line:
+            els = line.split()
+            ceafe = float(els[4])
+            continue
+        if startCoreferenceScoring and 'ceafm' in line:
+            els = line.split()
+            ceafm = float(els[4])
+            continue
+        if startCoreferenceScoring and 'muc' in line:
+            els = line.split()
+            muc = float(els[4])
+            continue
+        if startCoreferenceScoring and 'blanc' in line:
+            els = line.split()
+            blanc = float(els[4])
+            continue
+        if startCoreferenceScoring and 'Overall Average CoNLL score' in line:
+            els = line.split()
+            averageCoref = float(els[4])
+            continue
+        
     
     return OrderedDict({'spanP' : spanP, 'spanR' : spanR, 'spanF1' : spanF1,
                         'typeP' : subtypeP, 'typeR' : subtypeR, 'typeF1' : subtypeF1,
                         'subtypeP' : subtypeP, 'subtypeR' : subtypeR, 'subtypeF1' : subtypeF1,
                         'realisP' : realisP, 'realisR' : realisR, 'realisF1' : realisF1,
-                        'realisAndTypeP' : realisAndTypeP, 'realisAndTypeR' : realisAndTypeR, 'realisAndTypeF1' : realisAndTypeF1})
+                        'realisAndTypeP' : realisAndTypeP, 'realisAndTypeR' : realisAndTypeR, 'realisAndTypeF1' : realisAndTypeF1,
+                        'bcub' : bcub, 'ceafe' : ceafe, 'ceafm' : ceafm, 'muc' : muc, 'blanc' : blanc, 'averageCoref' : averageCoref})
 
-def getPerformance(total, predicted, correct):
-    p = 0.0 if predicted == 0 else 1.0 * correct / predicted
-    r = 0.0 if total == 0 else 1.0 * correct / total
-    f1 = 0.0 if (p + r) == 0 else (2*p*r) / (p+r)
-    return p, r, f1
-
-def readAnnotationFile(afile):
-    typeRes = defaultdict(lambda : defaultdict(set))
-    subtypeRes = defaultdict(lambda : defaultdict(set))
-    realisRes = defaultdict(lambda : defaultdict(set))
-    with open(afile) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or line.startswith('@'): continue
-            
-            els = line.split('\t')
-            doc = els[1]
-            
-            span = els[3]
-            st = els[5].replace('-', '').lower()
-            etype = st[0:st.find('_')]
-            esubtype = st[(st.find('_')+1):]
-            
-            realis = els[6].lower()
-            
-            typeRes[doc][span].add(etype) # += [etype]
-            subtypeRes[doc][span].add(st) # += [st]
-            realisRes[doc][span].add(realis) # += [realis]
-    return typeRes, subtypeRes, realisRes
-
-def saving(corpus, predictions, probs, idx2word, idx2label, idMapping, address):
-        
-    def generateEvtSent(rid, sent, anchor, start, end, pred, idx2word, idx2label, idMapping):
-        res = idMapping[rid] + '\t'
-        res += str(start) + ',' + str(end) + '\t'
-        for i, w in enumerate(sent):
-            if w == 0: continue
-            w = idx2word[w]
-            if i == anchor:
-                res += '<anchor>' + w + '</anchor>' + ' '
-            else:
-                res += w + ' '
-        
-        res = res.strip()
-        res += '\t' + idx2label[pred]
-        
-        return res
-    
-    def generateProb(rid, pro, start, end, idx2label, idMapping):
-        res = idMapping[rid] + '\t'
-        res += str(start) + ',' + str(end) + '\t'
-        for i in range(pro.shape[0]):
-            res += idx2label[i] + ':' + str(pro[i]) + ' '
-        res = res.strip()
-        return res
-    
-    fout = open(address, 'w')
-    fprobOut = open(address + '.prob', 'w')
-    
-
-    for rid, sent, anchor, start, end, pred, pro in zip(corpus['id'], corpus['word'], corpus['position'], corpus['wordStart'], corpus['wordEnd'], predictions, probs):
-        fout.write(generateEvtSent(rid, sent, anchor, start, end, pred, idx2word, idx2label, idMapping) + '\n')
-        fprobOut.write(generateProb(rid, pro, start, end, idx2label, idMapping) + '\n')
-    
-    fout.close()
-    fprobOut.close()
-
-def generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1, multilayerNN2):
-    res = 'realis.' + model + '.f-'
-    for fe in expected_features: res += str(expected_features[fe])
+def generateParameterFileName(model, expected_features1, expected_features2, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1, multilayerNN2):
+    res = 'realis.' + model + '.f1-'
+    for fe in expected_features1: res += str(expected_features1[fe])
+    res += '.f2-'
+    for fe in expected_features2: res += str(expected_features2[fe])
     res += '.h-' + str(nhidden)
     res += '.cf-' + str(conv_feature_map)
     res += '.cwf-'
@@ -611,7 +592,8 @@ def train(dataset_path='',
           model='basic',
           wedWindow=-1,
           window=31,
-          expected_features = OrderedDict([('anchor', -1), ('pos', -1), ('chunk', -1), ('possibleTypes', -1), ('dep', -1), ('nonref', -1), ('title', -1), ('eligible', -1)]),
+          expected_features1 = OrderedDict([('anchor', -1), ('pos', -1), ('chunk', -1), ('possibleTypes', -1), ('dep', -1), ('nonref', -1), ('title', -1), ('eligible', -1)]),
+          expected_features2 = OrderedDict([('anchor', -1), ('pos', -1), ('chunk', -1), ('possibleTypes', -1), ('dep', -1), ('nonref', -1), ('title', -1), ('eligible', -1)]),
           givenPath=None,
           withEmbs=False, # using word embeddings to initialize the network or not
           updateEmbs=True,
@@ -624,6 +606,7 @@ def train(dataset_path='',
           decay=False,
           batch=50,
           binaryCutoff=1,
+          coreferenceCutoff=1,
           multilayerNN1=[1200, 600],
           multilayerNN2=[1200, 600],
           nhidden=100,
@@ -636,19 +619,18 @@ def train(dataset_path='',
           
     if binaryCutoff > 0 and not model.startswith('#'): model = '#' + model
     
-    folder = '/scratch/thn235/projects/nugget/resRealis/' + folder
+    folder = '/scratch/thn235/projects/nugget/resCoref/' + folder
 
     paramFolder = folder + '/params'
 
     if not os.path.exists(folder): os.mkdir(folder)
     if not os.path.exists(paramFolder): os.mkdir(paramFolder)
     
-    paramFileName = paramFolder + '/' + generateParameterFileName(model, expected_features, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1, multilayerNN2)
+    paramFileName = paramFolder + '/' + generateParameterFileName(model, expected_features1, expected_features2, nhidden, conv_feature_map, conv_win_feature_map, multilayerNN1, multilayerNN2)
 
     print 'loading dataset: ', dataset_path, ' ...'
     revs, embeddings, dictionaries = cPickle.load(open(dataset_path, 'rb'))
     
-    idx2label = dict((k,v) for v,k in dictionaries['realis'].iteritems())
     idx2word  = dict((k,v) for v,k in dictionaries['word'].iteritems())
 
     if not withEmbs:
@@ -662,17 +644,27 @@ def train(dataset_path='',
     del embeddings['randomWord']
     embeddings['word'] = wordEmbs
     
-    if expected_features['dep'] >= 0: expected_features['dep'] = 1
-    if expected_features['possibleTypes'] >= 0: expected_features['possibleTypes'] = 1
+    if expected_features1['dep'] >= 0: expected_features1['dep'] = 1
+    if expected_features1['possibleTypes'] >= 0: expected_features1['possibleTypes'] = 1
+    if expected_features2['dep'] >= 0: expected_features2['dep'] = 1
+    if expected_features2['possibleTypes'] >= 0: expected_features2['possibleTypes'] = 1
 
-    features = OrderedDict([('word', 0)])
+    features1 = OrderedDict([('word', 0)])
+    features2 = OrderedDict([('word', 0)])
 
-    for ffin in expected_features:
-        features[ffin] = expected_features[ffin]
-        if expected_features[ffin] == 0:
-            print 'using features: ', ffin, ' : embeddings'
-        elif expected_features[ffin] == 1:
-            print 'using features: ', ffin, ' : binary'
+    for ffin in expected_features1:
+        features1[ffin] = expected_features1[ffin]
+        if expected_features1[ffin] == 0:
+            print 'using features1: ', ffin, ' : embeddings'
+        elif expected_features1[ffin] == 1:
+            print 'using features1: ', ffin, ' : binary'
+            
+    for ffin in expected_features2:
+        features2[ffin] = expected_features2[ffin]
+        if expected_features2[ffin] == 0:
+            print 'using features2: ', ffin, ' : embeddings'
+        elif expected_features2[ffin] == 1:
+            print 'using features2: ', ffin, ' : binary'
     
     #preparing transfer knowledge
     kGivens = {}
@@ -686,24 +678,31 @@ def train(dataset_path='',
         window = kGivens['window']
     if window % 2 == 0: window += 1
     
-    datasets, idMappings, wholeLineEventTypeRealisStorer = make_data(revs, dictionaries, embeddings, features, window, eventTypePath)
+    datasets, idMappings, wholeLineEventTypeRealisStorer = make_data(revs, dictionaries, embeddings, features1, features2, window, eventTypePath)
     
     dimCorpus = datasets['train']
     
     vocsize = len(idx2word)
-    nclasses = len(idx2label)
-    nsentences = len(dimCorpus['word'])
+    nclasses = 2
+    nsentences = len(dimCorpus['word1'])
 
     print 'vocabsize = ', vocsize, ', nclasses = ', nclasses, ', nsentences = ', nsentences, ', word embeddings dim = ', emb_dimension
     
-    features_dim = OrderedDict([('word', emb_dimension)])
-    for ffin in expected_features:
-        if features[ffin] == 1:
-            features_dim[ffin] = len(dimCorpus[ffin][0][0])
-        elif features[ffin] == 0:
-            features_dim[ffin] = embeddings[ffin].shape[1]
+    features_dim1 = OrderedDict([('word', emb_dimension)])
+    for ffin in expected_features1:
+        if features1[ffin] == 1:
+            features_dim1[ffin] = len(dimCorpus[ffin + '1'][0][0])
+        elif features1[ffin] == 0:
+            features_dim1[ffin] = embeddings[ffin].shape[1]
+            
+    features_dim2 = OrderedDict([('word', emb_dimension)])
+    for ffin in expected_features2:
+        if features2[ffin] == 1:
+            features_dim2[ffin] = len(dimCorpus[ffin + '2'][0][0])
+        elif features2[ffin] == 0:
+            features_dim2[ffin] = embeddings[ffin].shape[1]
     
-    conv_winre = len(dimCorpus['word'][0])
+    conv_winre = len(dimCorpus['word1'][0])
     
     print '------- length of the instances: ', conv_winre
     #binaryFeatureDim = -1
@@ -716,6 +715,14 @@ def train(dataset_path='',
         binaryFeatureDict = makeBinaryDictionary(dimCorpus, binaryCutoff)
     maxBinaryFetDim = findMaximumBinaryLength(datasets)
     binaryFeatureDim = convertBinaryFeatures(datasets, maxBinaryFetDim, binaryFeatureDict)
+    
+    if 'coreferenceFeatureDict' in kGivens:
+        print '********** USING COREFERENCE FEATURE DICTIONARY FROM LOADED MODEL'
+        coreferenceFeatureDict = kGivens['coreferenceFeatureDict']
+    else:
+        print '********** CREATING COREFERENCE FEATURE DICTIONARY FROM TRAINING DATA'
+        coreferenceFeatureDict = makeCoreferenceFeatureDictionary(dimCorpus, coreferenceCutoff)
+    coreferenceFeatureDim = convertCoreferenceFeatures(datasets, coreferenceFeatureDict)
     
     params = {'model' : model,
               'wedWindow' : wedWindow,
@@ -730,12 +737,17 @@ def train(dataset_path='',
               'regularizer': regularizer,
               'norm_lim' : norm_lim,
               'updateEmbs' : updateEmbs,
-              'features' : features,
-              'features_dim' : features_dim,
+              'features1' : features1,
+              'features_dim1' : features_dim1,
+              'features2' : features2,
+              'features_dim2' : features_dim2,
               'optimizer' : optimizer,
               'binaryCutoff' : binaryCutoff,
               'binaryFeatureDim' : binaryFeatureDim,
               'binaryFeatureDict' : binaryFeatureDict,
+              'coreferenceCutoff' : coreferenceCutoff,
+              'coreferenceFeatureDim' : coreferenceFeatureDim,
+              'coreferenceFeatureDict' : coreferenceFeatureDict,
               'multilayerNN1' : multilayerNN1,
               'multilayerNN2' : multilayerNN2,
               'conv_winre' : conv_winre,
@@ -748,6 +760,7 @@ def train(dataset_path='',
                 datasets[corpus][ed] = numpy.array(datasets[corpus][ed], dtype='int32')
             else:
                 dty = 'float32' if numpy.array(datasets[corpus][ed][0]).ndim == 2 else 'int32'
+                if ed == 'coreferenceFeatures': dtype = 'float32'
                 datasets[corpus][ed] = numpy.array(datasets[corpus][ed], dtype=dty)
     
     trainCorpus = {}
@@ -763,7 +776,7 @@ def train(dataset_path='',
         for ed in augt:
             trainCorpus[ed] = augt[ed]
     
-    number_batch = trainCorpus['word'].shape[0] / batch
+    number_batch = trainCorpus['word1'].shape[0] / batch
     
     print '... number of batches: ', number_batch
     
@@ -799,22 +812,34 @@ def train(dataset_path='',
         for minibatch_index in numpy.random.permutation(range(number_batch)):
             miniId += 1
             trainIn = OrderedDict()
-            for ed in features:
-                if features[ed] >= 0:
-                    if ed not in trainCorpus:
-                        print 'cannot find data in train for: ', ed
+            for ed in features1:
+                if features1[ed] >= 0:
+                    if ed + '1' not in trainCorpus:
+                        print 'cannot find data in train for: ', ed + '1'
                         exit()
                     
-                    trainIn[ed] = trainCorpus[ed][minibatch_index*batch:(minibatch_index+1)*batch]
+                    trainIn[ed + '1'] = trainCorpus[ed + '1'][minibatch_index*batch:(minibatch_index+1)*batch]
+            for ed in features2:
+                if features2[ed] >= 0:
+                    if ed + '2' not in trainCorpus:
+                        print 'cannot find data in train for: ', ed + '2'
+                        exit()
+                    
+                    trainIn[ed + '2'] = trainCorpus[ed + '2'][minibatch_index*batch:(minibatch_index+1)*batch]
 
-            trainAnchor = trainCorpus['position'][minibatch_index*batch:(minibatch_index+1)*batch]
+            trainAnchor1 = trainCorpus['position1'][minibatch_index*batch:(minibatch_index+1)*batch]
+            trainAnchor2 = trainCorpus['position2'][minibatch_index*batch:(minibatch_index+1)*batch]
 
             zippedData = [ trainIn[ed] for ed in trainIn ]
 
-            zippedData += [trainAnchor]
+            zippedData += [trainAnchor1, trainAnchor2]
             
-            if 'binaryFeatures' in trainCorpus:
-                zippedData += [trainCorpus['binaryFeatures'][minibatch_index*batch:(minibatch_index+1)*batch]]
+            if 'coreferenceFeatures' in trainCorpus:
+                zippedData += [trainCorpus['coreferenceFeatures'][minibatch_index*batch:(minibatch_index+1)*batch]]
+            
+            if 'binaryFeatures1' in trainCorpus:
+                zippedData += [trainCorpus['binaryFeatures1'][minibatch_index*batch:(minibatch_index+1)*batch]]
+                zippedData += [trainCorpus['binaryFeatures2'][minibatch_index*batch:(minibatch_index+1)*batch]]
 
             zippedData += [trainCorpus['label'][minibatch_index*batch:(minibatch_index+1)*batch]]
             
@@ -833,25 +858,21 @@ def train(dataset_path='',
         print 'evaluating in epoch: ', e
 
         for elu in evaluatingDataset:
-            _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, idx2label, features)
+            _predictions[elu], _probs[elu] = predict(evaluatingDataset[elu], batch, reModel, idx2word, features1, features2)
             
-            writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], idMappings[elu], wholeLineEventTypeRealisStorer, idx2label, folder + '/' + elu + '.realis.pred' + str(e))
+            writeout(evaluatingDataset[elu], _predictions[elu], _probs[elu], idMappings[elu], wholeLineEventTypeRealisStorer[elu], folder + '/' + elu + '.coref.pred' + str(e))
             
             if goldFiles[elu] and tokenFiles[elu]:
-                _perfs[elu] = myScore(goldFiles[elu], folder + '/' + elu + '.realis.pred' + str(e), tokenFiles[elu])
+                _perfs[elu] = myScore(goldFiles[elu], folder + '/' + elu + '.coref.pred' + str(e), tokenFiles[elu], conllTempFile)
         
         perPrint(_perfs)
         
         print 'saving parameters ...'
         reModel.save(paramFileName + str(e) + '.pkl')
         
-        #print 'saving output ...'
-        #for elu in evaluatingDataset:
-        #    saving(evaluatingDataset[elu], _predictions[elu], _probs[elu], idx2word, idx2label, idMappings[elu], folder + '/' + elu + str(e) + '.realis.fullPred')
-        
-        if _perfs['valid']['realisF1'] > best_f1:
+        if _perfs['valid']['averageCoref'] > best_f1:
             #rnn.save(folder)
-            best_f1 = _perfs['valid']['realisF1']
+            best_f1 = _perfs['valid']['averageCoref']
             print '*************NEW BEST: epoch: ', e
             if verbose:
                 perPrint(_perfs, len('Current Performance')*'-')
@@ -882,6 +903,12 @@ def perPrint(perfs, mess='Current Performance'):
         print 'mention_subtype: ', str(perfs[elu]['subtypeP']) + '\t' + str(perfs[elu]['subtypeR']) + '\t' + str(perfs[elu]['subtypeF1'])
         print 'realis_status: ', str(perfs[elu]['realisP']) + '\t' + str(perfs[elu]['realisR']) + '\t' + str(perfs[elu]['realisF1'])
         print 'mention_type+realis_status: ', str(perfs[elu]['realisAndTypeP']) + '\t' + str(perfs[elu]['realisAndTypeR']) + '\t' + str(perfs[elu]['realisAndTypeF1'])
+        print 'bcub: ', perfs[elu]['bcub']
+        print 'ceafe: ', perfs[elu]['ceafe']
+        print 'ceafm: ', perfs[elu]['ceafm']
+        print 'muc: ', perfs[elu]['muc']
+        print 'blanc: ', perfs[elu]['blanc']
+        print 'averageCoref: ', perfs[elu]['averageCoref']
     
     print '------------------------------------------------------------------------------'
 

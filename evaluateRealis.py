@@ -86,8 +86,8 @@ def argsp():
 
 if __name__=='__main__':
     
-    pars={'dataset_path' : '/misc/proteus108/thien/projects/fifth/eventNugget/nn/eligible0.win31.word2vec_nugget.pkl',
-          'eventTypePath' : '',
+    pars={'dataset_path' : '/scratch/thn235/projects/nugget/eligible0.win31.textWord2vec_nugget.pkl',
+          'eventTypePath' : '/scratch/thn235/projects/nugget/realisData',
           'model' : 'nonConsecutiveConvolute', # convolute # rnnHead, rnnMax, rnnHeadFf, rnnMaxFf, rnnHeadForward, rnnHeadBackward, rnnMaxForward, rnnMaxBackward, rnnHeadFfForward, rnnHeadFfBackward, rnnMaxFfForward, rnnMaxFfBackward # alternateHead, alternateMax, alternateConv, nonConsecutiveConvolute, rnnHeadNonConsecutiveConv
           'wedWindow' : 2,
           'window' : 31,
