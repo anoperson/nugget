@@ -127,7 +127,7 @@ if __name__=='__main__':
           'optimizer' : 'adadelta',
           'negatives' : 100,
           'lr' : 0.01,
-          'dropout' : 0.5,
+          'dropout' : 0.0,
           'regularizer' : 0.0,
           'norm_lim' : 9.0,
           'verbose' : 1,
